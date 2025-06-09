@@ -5,30 +5,35 @@ A comprehensive AI-powered research assistant designed to help users understand,
 ## 🎯 Features
 
 ### 1. Document Ingestion
+
 - **Multi-format Support**: PDF, plain text, HTML, and web URLs
 - **Intelligent Parsing**: Extracts structured text and metadata
 - **Content Validation**: File size limits and type checking
 - **Checksum Verification**: Ensures document integrity
 
 ### 2. AI-Powered Analysis
+
 - **Entity Extraction**: Identifies laws, agencies, affected groups, and legal concepts
 - **Risk Assessment**: Evaluates civil rights, privacy, and constitutional implications
 - **Impact Analysis**: Summarizes potential effects on different populations
 - **Confidence Scoring**: Provides transparency in AI predictions
 
 ### 3. Interactive Querying
+
 - **Natural Language Questions**: Ask questions like "Who does this bill affect?"
 - **Contextual Answers**: Responses backed by source citations
 - **Multi-document Search**: Query across multiple analyzed documents
 - **Follow-up Suggestions**: Intelligent question recommendations
 
 ### 4. Output Generation
+
 - **Multiple Formats**: Markdown, HTML, JSON, and PDF reports
 - **Customizable Templates**: Tailored outputs for different audiences
 - **Source Citations**: Complete traceability to original documents
 - **Export Options**: Ready for newsletters, reports, or fact sheets
 
 ### 5. Responsible AI Features
+
 - **Transparency**: Full audit trails and decision logging
 - **Confidence Indicators**: Clear uncertainty communication
 - **Human Review Flags**: Automatic flagging of low-confidence results
@@ -97,9 +102,10 @@ poetry run python -m uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 The API will be available at:
-- **API**: http://localhost:8000
-- **Documentation**: http://localhost:8000/docs
-- **Alternative Docs**: http://localhost:8000/redoc
+
+- **API**: <http://localhost:8000>
+- **Documentation**: <http://localhost:8000/docs>
+- **Alternative Docs**: <http://localhost:8000/redoc>
 
 ### 5. Test the Setup
 
@@ -167,7 +173,7 @@ curl -X POST "http://localhost:8000/api/v1/outputs/generate" \
 
 ## 🏗️ Project Structure
 
-```
+``` text
 lepola/
 ├── src/                     # Source code
 │   ├── core/               # Core functionality
@@ -255,10 +261,13 @@ poetry run pytest -m "not slow and not integration"
 ## 🌍 Deployment
 
 ### Local Development
+
 The application is configured for local development by default.
 
 ### Cloud Deployment (AWS)
+
 The application supports deployment to AWS using:
+
 - **ECS/Fargate**: For containerized deployment
 - **Lambda**: For serverless deployment
 - **S3**: For document storage
@@ -290,4 +299,4 @@ This tool is designed to assist with legal and policy research but should not be
 
 ---
 
-Built with ❤️ for legal researchers, policy advocates, and civil society organizations. 
+Built with ❤️ for legal researchers, policy advocates, and civil society organizations.
