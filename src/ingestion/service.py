@@ -7,7 +7,9 @@ text files, DOCX files, and web URLs, extracting content and metadata.
 
 import hashlib
 import mimetypes
+import re
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from typing import BinaryIO, Optional, Tuple
 from urllib.parse import urlparse
@@ -265,20 +267,138 @@ class DocumentIngestionService(LoggingMixin):
 
             # Extract metadata
             pdf_info = pdf_reader.metadata
+
+            # Log PDF metadata for debugging
+            self.logger.info(
+                "PDF metadata extracted",
+                pdf_info={
+                    "title": pdf_info.get("/Title"),
+                    "author": pdf_info.get("/Author"),
+                    "subject": pdf_info.get("/Subject"),
+                    "creator": pdf_info.get("/Creator"),
+                    "producer": pdf_info.get("/Producer"),
+                    "creation_date": pdf_info.get("/CreationDate"),
+                    "modification_date": pdf_info.get("/ModDate"),
+                    "raw_metadata_keys": list(pdf_info.keys()) if pdf_info else [],
+                },
+                page_count=len(pdf_reader.pages),
+                content_length=len(content),
+                word_count=len(content.split()) if content else 0,
+            )
+
             metadata = DocumentMetadata(
                 title=pdf_info.get("/Title"),
                 author=pdf_info.get("/Author"),
                 subject=pdf_info.get("/Subject"),
                 page_count=len(pdf_reader.pages),
                 word_count=len(content.split()) if content else 0,
-                creation_date=pdf_info.get("/CreationDate"),
-                modification_date=pdf_info.get("/ModDate"),
+                creation_date=self._parse_pdf_date(pdf_info.get("/CreationDate")),
+                modification_date=self._parse_pdf_date(pdf_info.get("/ModDate")),
+            )
+
+            # Log date parsing results for debugging
+            self.logger.info(
+                "PDF date parsing results",
+                raw_creation_date=pdf_info.get("/CreationDate"),
+                parsed_creation_date=(
+                    metadata.creation_date.isoformat()
+                    if metadata.creation_date
+                    else None
+                ),
+                raw_modification_date=pdf_info.get("/ModDate"),
+                parsed_modification_date=(
+                    metadata.modification_date.isoformat()
+                    if metadata.modification_date
+                    else None
+                ),
+            )
+
+            # Log processed metadata for verification
+            self.logger.info(
+                "Document metadata processed",
+                title=metadata.title,
+                author=metadata.author,
+                subject=metadata.subject,
+                page_count=metadata.page_count,
+                word_count=metadata.word_count,
+                has_creation_date=metadata.creation_date is not None,
+                has_modification_date=metadata.modification_date is not None,
             )
 
             return content, metadata
 
         except Exception as e:
             raise DocumentIngestionError(f"Failed to extract PDF content: {str(e)}")
+
+    def _parse_pdf_date(self, pdf_date_str: Optional[str]) -> Optional[datetime]:
+        """Parse PDF date format to datetime object.
+
+        PDF dates are typically in the format: D:YYYYMMDDHHmmSSOHH'mm'
+        Example: "D:20250525092926-04'00'"
+
+        Args:
+            pdf_date_str: Raw PDF date string.
+
+        Returns:
+            Parsed datetime object or None if parsing fails.
+        """
+        if not pdf_date_str:
+            return None
+
+        try:
+            # Remove 'D:' prefix if present
+            date_str = pdf_date_str.lstrip("D:")
+
+            # Extract main date part (YYYYMMDDHHMMSS)
+            main_part = date_str[:14]
+
+            # Parse the main datetime part
+            dt = datetime.strptime(main_part, "%Y%m%d%H%M%S")
+
+            # Handle timezone offset if present
+            if len(date_str) > 14:
+                # Extract timezone part (e.g., "-04'00'" or "+05'30'")
+                tz_part = date_str[14:]
+
+                # Parse timezone offset
+                tz_match = re.match(r"([+-])(\d{2})'?(\d{2})'?", tz_part)
+                if tz_match:
+                    sign, hours, minutes = tz_match.groups()
+
+                    # Convert to timedelta
+                    from datetime import timedelta, timezone
+
+                    offset_hours = int(hours)
+                    offset_minutes = int(minutes)
+
+                    if sign == "-":
+                        offset = timedelta(hours=-offset_hours, minutes=-offset_minutes)
+                    else:
+                        offset = timedelta(hours=offset_hours, minutes=offset_minutes)
+
+                    # Apply timezone and convert to UTC
+                    tz = timezone(offset)
+                    dt = dt.replace(tzinfo=tz)
+
+                    # Convert to UTC for consistent storage
+                    dt_utc = dt.utctimetuple()
+                    dt = datetime(*dt_utc[:6])  # Convert to naive UTC datetime
+
+            self.logger.debug(
+                "PDF date parsed successfully",
+                original_date=pdf_date_str,
+                parsed_date=dt.isoformat(),
+            )
+
+            return dt
+
+        except Exception as e:
+            self.logger.warning(
+                "Failed to parse PDF date",
+                pdf_date=pdf_date_str,
+                error=str(e),
+            )
+            return None
 
     def _extract_text_content(
         self, file_data: BinaryIO

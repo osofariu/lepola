@@ -13,6 +13,7 @@ import pytest
 
 from src.core.models import DocumentType, ProcessingStatus
 from src.ingestion.service import DocumentIngestionError, DocumentIngestionService
+from datetime import datetime
 
 
 class TestDocumentIngestionService:
@@ -169,3 +170,31 @@ async def test_ingest_url_with_mock():
         assert document.source_url == "https://example.com/test.html"
         assert document.file_type == DocumentType.URL
         assert "Test content" in document.content
+
+
+def test_pdf_date_parsing():
+    """Test PDF date parsing functionality."""
+    service = DocumentIngestionService()
+
+    # Test various PDF date formats
+    test_cases = [
+        (
+            "D:20250525092926-04'00'",
+            datetime(2025, 5, 25, 13, 29, 26),
+        ),  # UTC conversion
+        ("D:20240101120000+05'30'", datetime(2024, 1, 1, 6, 30, 0)),  # UTC conversion
+        ("D:20230615143000", datetime(2023, 6, 15, 14, 30, 0)),  # No timezone
+        (None, None),  # None input
+        ("", None),  # Empty string
+        ("invalid_date", None),  # Invalid format
+    ]
+
+    for pdf_date, expected in test_cases:
+        result = service._parse_pdf_date(pdf_date)
+        if expected is None:
+            assert result is None, f"Expected None for {pdf_date}, got {result}"
+        else:
+            assert result is not None, f"Expected datetime for {pdf_date}, got None"
+            assert (
+                abs((result - expected).total_seconds()) < 60
+            ), f"Date mismatch for {pdf_date}: expected {expected}, got {result}"
