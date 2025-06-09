@@ -1,0 +1,63 @@
+SAMPLE DIGITAL PRIVACY PROTECTION ACT
+
+SECTION 1. SHORT TITLE
+This Act may be cited as the "Digital Privacy Protection Act of 2024."
+
+SECTION 2. DEFINITIONS
+For purposes of this Act:
+(1) "Personal data" means any information that relates to an identified or identifiable individual.
+(2) "Data processor" means any entity that processes personal data on behalf of a data controller.
+(3) "Consent" means freely given, specific, informed and unambiguous indication of the data subject's wishes.
+
+SECTION 3. SCOPE AND APPLICATION
+This Act applies to:
+(a) Any entity that processes personal data of residents within the jurisdiction;
+(b) Any entity that offers goods or services to residents within the jurisdiction;
+(c) Any entity that monitors the behavior of residents within the jurisdiction.
+
+SECTION 4. LAWFUL BASIS FOR PROCESSING
+Personal data shall be processed lawfully, fairly, and transparently. Processing shall be based on:
+(a) Consent of the data subject;
+(b) Performance of a contract;
+(c) Compliance with legal obligations;
+(d) Protection of vital interests;
+(e) Performance of public interest tasks;
+(f) Legitimate interests pursued by the controller.
+
+SECTION 5. DATA SUBJECT RIGHTS
+Data subjects shall have the following rights:
+(a) Right to be informed about data processing;
+(b) Right of access to personal data;
+(c) Right to rectification of inaccurate data;
+(d) Right to erasure ("right to be forgotten");
+(e) Right to restrict processing;
+(f) Right to data portability;
+(g) Right to object to processing;
+(h) Rights related to automated decision-making.
+
+SECTION 6. DATA PROTECTION OBLIGATIONS
+Data controllers must:
+(a) Implement appropriate technical and organizational measures;
+(b) Conduct data protection impact assessments for high-risk processing;
+(c) Maintain records of processing activities;
+(d) Report data breaches within 72 hours to the supervisory authority;
+(e) Notify affected individuals of high-risk breaches without undue delay.
+
+SECTION 7. PENALTIES
+Violations of this Act may result in:
+(a) Administrative fines up to 4% of annual global turnover or $20 million, whichever is higher;
+(b) Criminal penalties for willful violations;
+(c) Civil liability for damages to affected individuals.
+
+SECTION 8. ENFORCEMENT
+The Data Protection Authority shall have the power to:
+(a) Investigate violations;
+(b) Issue binding decisions;
+(c) Impose administrative fines;
+(d) Refer criminal matters to prosecutors.
+
+SECTION 9. EFFECTIVE DATE
+This Act shall take effect 18 months after the date of enactment.
+
+SECTION 10. SEVERABILITY
+If any provision of this Act is held invalid, the remainder shall remain in effect. 
