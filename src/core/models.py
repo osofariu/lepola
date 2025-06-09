@@ -5,12 +5,17 @@ This module defines the main Pydantic models used throughout the application
 for data validation and serialization.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field
+
+
+def utc_now() -> datetime:
+    """Return current UTC datetime using the new timezone-aware API."""
+    return datetime.now(UTC)
 
 
 class DocumentType(str, Enum):
@@ -54,7 +59,7 @@ class BaseEntity(BaseModel):
 
     id: UUID = Field(default_factory=uuid4, description="Unique identifier")
     created_at: datetime = Field(
-        default_factory=datetime.utcnow, description="Creation timestamp"
+        default_factory=utc_now, description="Creation timestamp"
     )
     updated_at: Optional[datetime] = Field(
         default=None, description="Last update timestamp"
@@ -67,7 +72,7 @@ class DocumentMetadata(BaseModel):
     title: Optional[str] = Field(default=None, description="Document title")
     author: Optional[str] = Field(default=None, description="Document author")
     subject: Optional[str] = Field(default=None, description="Document subject")
-    keywords: List[str] = Field(default_factory=list, description="Document keywords")
+    keywords: list[str] = Field(default_factory=list, description="Document keywords")
     creation_date: Optional[datetime] = Field(
         default=None, description="Document creation date"
     )
@@ -129,10 +134,10 @@ class KeyProvision(BaseModel):
     source_section: str = Field(
         ..., description="Document section where provision was found"
     )
-    affected_groups: List[str] = Field(
+    affected_groups: list[str] = Field(
         default_factory=list, description="Groups affected by this provision"
     )
-    legal_references: List[str] = Field(
+    legal_references: list[str] = Field(
         default_factory=list, description="Referenced laws or precedents"
     )
 
@@ -145,10 +150,10 @@ class RiskAssessment(BaseModel):
     )
     risk_level: str = Field(..., description="Risk level (low, medium, high)")
     description: str = Field(..., description="Risk description")
-    affected_rights: List[str] = Field(
+    affected_rights: list[str] = Field(
         default_factory=list, description="Affected rights or protections"
     )
-    mitigation_suggestions: List[str] = Field(
+    mitigation_suggestions: list[str] = Field(
         default_factory=list, description="Suggested mitigations"
     )
     confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score")
@@ -158,15 +163,15 @@ class DocumentSummary(BaseModel):
     """Model for document summaries."""
 
     executive_summary: str = Field(..., description="High-level executive summary")
-    key_points: List[str] = Field(..., description="Key points from the document")
-    main_provisions: List[KeyProvision] = Field(
+    key_points: list[str] = Field(..., description="Key points from the document")
+    main_provisions: list[KeyProvision] = Field(
         ..., description="Main provisions identified"
     )
-    risk_assessments: List[RiskAssessment] = Field(..., description="Risk assessments")
-    affected_groups: List[str] = Field(
+    risk_assessments: list[RiskAssessment] = Field(..., description="Risk assessments")
+    affected_groups: list[str] = Field(
         ..., description="Groups affected by the document"
     )
-    legal_precedents: List[str] = Field(..., description="Relevant legal precedents")
+    legal_precedents: list[str] = Field(..., description="Relevant legal precedents")
     implementation_timeline: Optional[str] = Field(
         default=None, description="Implementation timeline if specified"
     )
@@ -179,7 +184,7 @@ class AnalysisResult(BaseEntity):
     """Model for complete document analysis results."""
 
     document_id: UUID = Field(..., description="ID of the analyzed document")
-    entities: List[ExtractedEntity] = Field(..., description="Extracted entities")
+    entities: list[ExtractedEntity] = Field(..., description="Extracted entities")
     summary: DocumentSummary = Field(..., description="Document summary")
     confidence_level: ConfidenceLevel = Field(
         ..., description="Overall confidence level"
@@ -188,7 +193,7 @@ class AnalysisResult(BaseEntity):
         ..., description="Processing time in milliseconds"
     )
     model_used: str = Field(..., description="AI model used for analysis")
-    warnings: List[str] = Field(default_factory=list, description="Analysis warnings")
+    warnings: list[str] = Field(default_factory=list, description="Analysis warnings")
     requires_human_review: bool = Field(
         default=False, description="Whether human review is recommended"
     )
@@ -200,7 +205,7 @@ class Query(BaseModel):
     question: str = Field(
         ..., min_length=1, max_length=1000, description="User's question"
     )
-    document_ids: Optional[List[UUID]] = Field(
+    document_ids: Optional[list[UUID]] = Field(
         default=None, description="Specific documents to query against"
     )
     max_results: int = Field(
@@ -218,12 +223,12 @@ class QueryResult(BaseModel):
     confidence: float = Field(
         ..., ge=0.0, le=1.0, description="Confidence in the answer"
     )
-    sources: List[Dict[str, Any]] = Field(..., description="Source citations")
-    related_documents: List[UUID] = Field(..., description="Related document IDs")
-    suggestions: List[str] = Field(
+    sources: list[dict[str, Any]] = Field(..., description="Source citations")
+    related_documents: list[UUID] = Field(..., description="Related document IDs")
+    suggestions: list[str] = Field(
         default_factory=list, description="Follow-up question suggestions"
     )
-    warnings: List[str] = Field(
+    warnings: list[str] = Field(
         default_factory=list, description="Warnings about the answer"
     )
 
@@ -260,9 +265,9 @@ class HealthCheck(BaseModel):
     status: str = Field(..., description="Service status")
     version: str = Field(..., description="Application version")
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow, description="Health check timestamp"
+        default_factory=utc_now, description="Health check timestamp"
     )
-    dependencies: Dict[str, str] = Field(
+    dependencies: dict[str, str] = Field(
         default_factory=dict, description="Dependency status"
     )
 
@@ -291,9 +296,7 @@ class ErrorResponse(BaseModel):
 
     error: str = Field(..., description="Error type")
     message: str = Field(..., description="Error message")
-    details: Optional[Dict[str, Any]] = Field(
+    details: Optional[dict[str, Any]] = Field(
         default=None, description="Additional error details"
     )
-    timestamp: datetime = Field(
-        default_factory=datetime.utcnow, description="Error timestamp"
-    )
+    timestamp: datetime = Field(default_factory=utc_now, description="Error timestamp")
