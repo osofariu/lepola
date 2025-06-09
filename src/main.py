@@ -5,7 +5,6 @@ This module provides the entry point for the application, setting up
 the FastAPI server with all necessary routers and middleware.
 """
 
-import asyncio
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 

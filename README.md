@@ -55,7 +55,7 @@ A comprehensive AI-powered research assistant designed to help users understand,
 ### 1. Prerequisites
 
 - Python 3.13 or higher (3.11+ supported)
-- Poetry (for dependency management) 
+- Poetry (for dependency management)
 - OpenAI or Anthropic API key
 
 **Note for Python 3.13 users**: The project includes automatic compatibility settings for PyO3-based packages (like tiktoken). If you encounter installation issues, ensure `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` is set in your environment (it's included in the `.env.example`).
