@@ -100,7 +100,8 @@ def create_app() -> FastAPI:
 app = create_app()
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Main entry point for the application."""
     settings = Settings()
     uvicorn.run(
         "src.main:app",
@@ -109,3 +110,7 @@ if __name__ == "__main__":
         reload=settings.debug,
         log_level=settings.log_level.lower(),
     )
+
+
+if __name__ == "__main__":
+    main()
