@@ -22,6 +22,7 @@ from bs4 import BeautifulSoup
 from src.core.config import settings
 from src.core.logging import LoggingMixin, log_document_processing
 from src.core.models import Document, DocumentMetadata, DocumentType, ProcessingStatus
+from src.core.repository import document_repository
 
 
 class DocumentIngestionError(Exception):
@@ -89,6 +90,9 @@ class DocumentIngestionService(LoggingMixin):
                 checksum=checksum,
             )
 
+            # Save document to database
+            document = document_repository.create(document)
+
             log_document_processing(
                 document_id=str(document.id),
                 file_type=file_type.value,
@@ -98,7 +102,7 @@ class DocumentIngestionService(LoggingMixin):
             )
 
             self.logger.info(
-                "Document ingested successfully",
+                "Document ingested and saved successfully",
                 document_id=str(document.id),
                 filename=filename,
                 file_type=file_type.value,
@@ -177,6 +181,9 @@ class DocumentIngestionService(LoggingMixin):
                 checksum=checksum,
             )
 
+            # Save document to database
+            document = document_repository.create(document)
+
             log_document_processing(
                 document_id=str(document.id),
                 file_type="url",
@@ -185,7 +192,7 @@ class DocumentIngestionService(LoggingMixin):
             )
 
             self.logger.info(
-                "URL content ingested successfully",
+                "URL content ingested and saved successfully",
                 document_id=str(document.id),
                 url=url,
             )
@@ -491,16 +498,26 @@ class DocumentIngestionService(LoggingMixin):
     async def get_document_by_id(self, document_id: UUID) -> Optional[Document]:
         """Retrieve a document by its ID.
 
-        Note: This is a placeholder. In a real implementation, this would
-        query a database or storage system.
-
         Args:
             document_id: ID of the document to retrieve.
 
         Returns:
             Document if found, None otherwise.
         """
-        # Placeholder implementation
-        # In a real application, this would query a database
-        self.logger.info("Retrieving document", document_id=str(document_id))
-        return None
+        try:
+            document = document_repository.get_by_id(document_id)
+            if document:
+                self.logger.info(
+                    "Document retrieved successfully", document_id=str(document_id)
+                )
+            else:
+                self.logger.info("Document not found", document_id=str(document_id))
+            return document
+        except Exception as e:
+            self.logger.error(
+                "Failed to retrieve document",
+                document_id=str(document_id),
+                error=str(e),
+                exc_info=True,
+            )
+            return None

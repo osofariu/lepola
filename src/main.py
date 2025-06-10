@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.core.config import Settings
+from src.core.database import init_database
 from src.core.logging import setup_logging
 from src.ingestion.router import router as ingestion_router
 from src.pipeline.router import router as pipeline_router
@@ -31,7 +32,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup
     logger.info("Starting AI Legal & Policy Research Assistant")
 
-    # Initialize any required services here
+    # Initialize database
+    try:
+        await init_database()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error("Failed to initialize database", error=str(e), exc_info=True)
+        raise
+
+    # Initialize any other required services here
     # await initialize_vector_store()
     # await initialize_llm_clients()
 

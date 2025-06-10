@@ -8,10 +8,11 @@ various types of legal and policy documents.
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import JSONResponse
 
-from src.core.models import DocumentUploadResponse, ErrorResponse
+from src.core.models import DocumentUploadResponse, ErrorResponse, ProcessingStatus
+from src.core.repository import document_repository
 from src.ingestion.service import DocumentIngestionError, DocumentIngestionService
 
 router = APIRouter()
@@ -193,6 +194,61 @@ async def get_document(document_id: UUID):
 
 
 @router.get(
+    "/documents",
+    summary="List documents",
+    description="List ingested documents with optional filtering and pagination.",
+    responses={
+        500: {"model": ErrorResponse, "description": "Internal Server Error"},
+    },
+)
+async def list_documents(
+    limit: int = Query(50, ge=1, le=100, description="Number of documents to return"),
+    offset: int = Query(0, ge=0, description="Number of documents to skip"),
+    file_type: Optional[str] = Query(None, description="Filter by file type"),
+    status: Optional[ProcessingStatus] = Query(
+        None, description="Filter by processing status"
+    ),
+):
+    """List documents with pagination and filtering.
+
+    Args:
+        limit: Maximum number of documents to return (1-100).
+        offset: Number of documents to skip.
+        file_type: Filter by file type.
+        status: Filter by processing status.
+
+    Returns:
+        List of documents with metadata.
+
+    Raises:
+        HTTPException: If retrieval fails.
+    """
+    try:
+        documents = document_repository.list_documents(
+            limit=limit, offset=offset, file_type=file_type, status=status
+        )
+
+        total_count = document_repository.count(status=status)
+
+        return {
+            "documents": documents,
+            "pagination": {
+                "total": total_count,
+                "limit": limit,
+                "offset": offset,
+                "has_next": offset + limit < total_count,
+                "has_prev": offset > 0,
+            },
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error retrieving documents: {str(e)}",
+        )
+
+
+@router.get(
     "/status",
     summary="Get ingestion service status",
     description="Check the status and health of the document ingestion service.",
@@ -203,9 +259,27 @@ async def get_ingestion_status():
     Returns:
         Service status information.
     """
-    return {
-        "status": "healthy",
-        "service": "document-ingestion",
-        "supported_types": ingestion_service.supported_types,
-        "max_file_size": ingestion_service.max_file_size,
-    }
+    try:
+        total_documents = document_repository.count()
+        completed_documents = document_repository.count(ProcessingStatus.COMPLETED)
+        failed_documents = document_repository.count(ProcessingStatus.FAILED)
+
+        return {
+            "status": "healthy",
+            "service": "document-ingestion",
+            "supported_types": ingestion_service.supported_types,
+            "max_file_size": ingestion_service.max_file_size,
+            "documents": {
+                "total": total_documents,
+                "completed": completed_documents,
+                "failed": failed_documents,
+            },
+        }
+    except Exception as e:
+        return {
+            "status": "degraded",
+            "service": "document-ingestion",
+            "supported_types": ingestion_service.supported_types,
+            "max_file_size": ingestion_service.max_file_size,
+            "error": str(e),
+        }
