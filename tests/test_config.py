@@ -66,10 +66,12 @@ class TestSettings:
     def test_llm_configuration_missing_key(self):
         """Test that missing API key raises ValueError."""
         settings = Settings()
+        settings.default_llm_provider = "ollama"
         settings.openai_api_key = None
         settings.anthropic_api_key = None
+        settings.ollama_api_key = None
 
-        with pytest.raises(ValueError, match="OpenAI API key not configured"):
+        with pytest.raises(ValueError, match="Ollama API key not configured"):
             settings.get_llm_config()
 
     def test_is_development_property(self):

@@ -13,9 +13,10 @@ from langchain.prompts import PromptTemplate
 from langchain.schema import Document as LangChainDocument
 from langchain_core.language_models import BaseLanguageModel
 from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 
 from src.core.config import settings
-from src.core.logging import LoggingMixin, log_ai_operation
+from src.core.logging import LoggingMixin, log_ai_operation, debug_log
 from src.core.models import (
     AnalysisResult,
     ConfidenceLevel,
@@ -52,6 +53,7 @@ class AIAnalysisPipeline(LoggingMixin):
         """
         try:
             llm_config = settings.get_llm_config()
+            debug_log("** GOT LLM CONFIG ** ", llm_config)
 
             # Check if we should use a mock LLM for testing
             if llm_config.get("mock", False) or (
@@ -60,10 +62,20 @@ class AIAnalysisPipeline(LoggingMixin):
                 # Return a mock LLM for testing
                 from src.pipeline.mock_llm import MockLLM
 
+                debug_log("Using MockLLM for testing")
                 return MockLLM()
 
             if llm_config["provider"] == "openai":
+                debug_log("Initializing ChatOpenAI", model=llm_config["model"])
                 return ChatOpenAI(
+                    model=llm_config["model"],
+                    api_key=llm_config["api_key"],
+                    temperature=0.1,  # Low temperature for more consistent outputs
+                    max_tokens=2000,
+                )
+            elif llm_config["provider"] == "ollama":
+                debug_log("Initializing ChatOllama", model=llm_config["model"])
+                return ChatOllama(
                     model=llm_config["model"],
                     api_key=llm_config["api_key"],
                     temperature=0.1,  # Low temperature for more consistent outputs
@@ -93,6 +105,13 @@ class AIAnalysisPipeline(LoggingMixin):
         start_time = time.time()
 
         try:
+            debug_log(
+                "🚀 Starting document analysis",
+                doc_id=str(document.id),
+                filename=document.filename,
+                content_length=len(document.content),
+            )
+
             self.logger.info(
                 "Starting document analysis",
                 document_id=str(document.id),
@@ -102,8 +121,20 @@ class AIAnalysisPipeline(LoggingMixin):
             # Extract entities
             entities = await self._extract_entities(document)
 
+            self.logger.info(
+                "Extracted entities",
+                document_id=str(document.id),
+                filename=document.filename,
+            )
+
             # Generate summary with key provisions and risk assessments
             summary = await self._generate_summary(document, entities)
+
+            self.logger.info(
+                "Generated summary",
+                document_id=str(document.id),
+                filename=document.filename,
+            )
 
             # Determine overall confidence level
             confidence_level = self._calculate_confidence_level(
@@ -138,13 +169,6 @@ class AIAnalysisPipeline(LoggingMixin):
                 model=result.model_used,
                 confidence=summary.confidence_score,
                 duration_ms=processing_time,
-            )
-
-            self.logger.info(
-                "Document analysis completed",
-                document_id=str(document.id),
-                confidence_level=confidence_level.value,
-                processing_time_ms=processing_time,
             )
 
             return result

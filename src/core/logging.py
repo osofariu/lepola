@@ -91,7 +91,7 @@ def log_request_response(
     status_code: int,
     duration_ms: float,
     user_id: str = None,
-    **kwargs: Any
+    **kwargs: Any,
 ) -> None:
     """Log HTTP request/response information.
 
@@ -106,7 +106,6 @@ def log_request_response(
     logger = get_logger("http")
 
     log_data = {
-        "event": "http_request",
         "method": method,
         "path": path,
         "status_code": status_code,
@@ -129,7 +128,7 @@ def log_ai_operation(
     tokens_used: int = None,
     confidence: float = None,
     duration_ms: float = None,
-    **kwargs: Any
+    **kwargs: Any,
 ) -> None:
     """Log AI/LLM operation information.
 
@@ -144,7 +143,6 @@ def log_ai_operation(
     logger = get_logger("ai")
 
     log_data = {
-        "event": "ai_operation",
         "operation": operation,
         "model": model,
         **kwargs,
@@ -170,7 +168,7 @@ def log_document_processing(
     processing_time_ms: float = None,
     success: bool = True,
     error: str = None,
-    **kwargs: Any
+    **kwargs: Any,
 ) -> None:
     """Log document processing information.
 
@@ -214,3 +212,37 @@ class LoggingMixin:
     def logger(self) -> structlog.BoundLogger:
         """Get a logger instance bound to this class."""
         return get_logger(self.__class__.__name__)
+
+
+def debug_log(*args, **kwargs) -> None:
+    """Simple debug logger that always shows up in server output.
+
+    Use this for debugging when you need immediate visibility.
+
+    Args:
+        *args: Arguments to log (like print)
+        **kwargs: Additional key-value pairs to log
+
+    Example:
+        debug_log("LLM Config:", config_dict)
+        debug_log("Processing document", doc_id="123", status="active")
+    """
+    import sys
+    import time
+
+    # Create a simple timestamp
+    timestamp = time.strftime("%H:%M:%S")
+
+    # Format the message
+    if args:
+        message = " ".join(str(arg) for arg in args)
+    else:
+        message = "DEBUG"
+
+    # Add kwargs if provided
+    if kwargs:
+        kwargs_str = " ".join(f"{k}={v}" for k, v in kwargs.items())
+        message = f"{message} | {kwargs_str}"
+
+    # Force output to stderr (which uvicorn doesn't capture)
+    print(f"🐛 [{timestamp}] {message}", file=sys.stderr, flush=True)

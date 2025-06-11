@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     anthropic_api_key: Optional[str] = Field(
         default=None, description="Anthropic API key"
     )
+    ollama_api_key: Optional[str] = Field(default=None, description="Ollama API key")
+
     default_llm_provider: str = Field(
         default="openai", description="Default LLM provider"
     )
@@ -196,6 +198,25 @@ class Settings(BaseSettings):
                 "provider": "anthropic",
                 "api_key": self.anthropic_api_key,
                 "model": "claude-3-sonnet-20240229",
+            }
+
+        elif self.default_llm_provider == "ollama":
+            if not self.ollama_api_key:
+                raise ValueError("Ollama API key not configured")
+
+            # Check for test/mock API keys
+            if self.ollama_api_key.startswith("sk-oll-test-"):
+                return {
+                    "provider": "ollama",
+                    "api_key": self.ollama_api_key,
+                    "model": "llama3.1:8b",
+                    "mock": True,
+                }
+
+            return {
+                "provider": "ollama",
+                "api_key": self.ollama_api_key,
+                "model": "llama3.1:8b",
             }
         else:
             raise ValueError(f"Unsupported LLM provider: {self.default_llm_provider}")
