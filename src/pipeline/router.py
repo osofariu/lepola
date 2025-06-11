@@ -87,7 +87,7 @@ async def analyze_document(document_id: UUID):
             analysis_jobs[str(analysis_id)].update(
                 {
                     "status": "completed",
-                    "result": analysis_result.dict(),
+                    "result": analysis_result.model_dump(),
                     "completed_at": analysis_result.created_at.isoformat(),
                     "confidence_level": analysis_result.confidence_level.value,
                     "processing_time_ms": analysis_result.processing_time_ms,
