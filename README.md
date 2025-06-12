@@ -2,6 +2,20 @@
 
 A comprehensive AI-powered research assistant designed to help users understand, summarize, and assess the impact of legislative texts, court rulings, and regulatory documents. Built with Python, FastAPI, and LangChain.
 
+## Progress
+
+This project is in progress of being implemented.  Much of the code was produced with the help of Claude 4, and that has been a fun and interesting experience.
+
+Not all the features below exist yet, but here's what works:
+
+- the server exposes all the endpoints for injestion, pipeline, and chat
+- a sqlite3 database stores documents and metadata
+- injestion works with PDF documents
+- a simple analysis pipeline is able to extract entities and summary from text
+- accounted for _some_ variation in output format for entnty extraction by openAI's gpt-4-turbo-preview, Meta's llama3.1 and Google's gemma3:27b models.
+
+There's a lot more to to, but the focus of this project is learning not building a full-fledge production application.
+
 ## 🎯 Features
 
 ### 1. Document Ingestion
@@ -42,7 +56,7 @@ A comprehensive AI-powered research assistant designed to help users understand,
 ## 🛠️ Technology Stack
 
 - **Backend**: Python 3.13+ (3.11+ supported), FastAPI, Uvicorn
-- **AI/ML**: LangChain, OpenAI/Anthropic APIs
+- **AI/ML**: LangChain, OpenAI/Anthropic/Google APIs, works with ollama
 - **Document Processing**: pypdf, BeautifulSoup4
 - **Vector Database**: FAISS, ChromaDB
 - **Testing**: pytest, pytest-asyncio

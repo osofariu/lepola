@@ -5,9 +5,11 @@ This module implements the core AI functionality using LangChain to analyze
 legal and policy documents, extract entities, and generate summaries.
 """
 
+import json
 import time
 from typing import List, Optional
 from uuid import UUID
+import re
 
 from langchain.prompts import PromptTemplate
 from langchain.schema import Document as LangChainDocument
@@ -341,9 +343,21 @@ class AIAnalysisPipeline(LoggingMixin):
         Returns:
             List of parsed entities.
         """
-        entities = []
 
-        # Simple parsing - in production, use more robust parsing
+        debug_log("Parsing entity response:", response=response)
+
+        # probably need to improve prompt to get the format consistent between models
+        # but for now let's try to account for variations we have seen
+        json_match = re.search(r"```json", response)
+        if json_match:
+            json_response = response.split("```json")[1].split("```")[0]
+            response_entities = json.loads(json_response)
+            debug_log("json_match", response_entities)
+
+            entities = [self._map_to_entity(**entity) for entity in response_entities]
+            return entities
+
+        entities = []
         sections = response.split("---")
 
         for section in sections:
@@ -357,12 +371,23 @@ class AIAnalysisPipeline(LoggingMixin):
                 if len(lines) < 6:
                     continue
 
-                entity_type = lines[0].replace("Type:", "").strip()
-                entity_value = lines[1].replace("Value:", "").strip()
-                confidence = float(lines[2].replace("Confidence:", "").strip())
-                source_text = lines[3].replace("Source:", "").strip()
-                start_pos = int(lines[4].replace("Start:", "").strip()) + offset
-                end_pos = int(lines[5].replace("End:", "").strip()) + offset
+                match = re.search(r"**Type:**", lines[0])
+                if match:
+                    entity_type = re.sub(r"**Type:**", "", lines[0]).strip()
+                    entity_value = re.sub(r"**Value:**", "", lines[1]).strip()
+                    confidence = float(re.sub(r"**Confidence:**", "", lines[2]).strip())
+                    source_text = re.sub(r"**Source:**", "", lines[3]).strip()
+                    start_pos = (
+                        int(re.sub(r"**Start:**", "", lines[4]).strip()) + offset
+                    )
+                    end_pos = int(re.sub(r"**End:**", "", lines[5]).strip()) + offset
+                else:
+                    entity_type = re.sub(r"Type:", "", lines[0]).strip()
+                    entity_value = re.sub(r"Value:", "", lines[1]).strip()
+                    confidence = float(re.sub(r"Confidence:", "", lines[2]).strip())
+                    source_text = re.sub(r"Source:", "", lines[3]).strip()
+                    start_pos = int(re.sub(r"Start:", "", lines[4]).strip()) + offset
+                    end_pos = int(re.sub(r"End:", "", lines[5]).strip()) + offset
 
                 entity = ExtractedEntity(
                     entity_type=entity_type,
@@ -372,13 +397,26 @@ class AIAnalysisPipeline(LoggingMixin):
                     start_position=start_pos,
                     end_position=end_pos,
                 )
+                debug_log("entity", entity)
                 entities.append(entity)
 
             except (ValueError, IndexError) as e:
                 self.logger.warning("Failed to parse entity", error=str(e))
+                debug_log("lines", lines)
                 continue
 
         return entities
+
+    def _map_to_entity(self, entity: dict) -> ExtractedEntity:
+        """Map the entity to the ExtractedEntity model."""
+        return ExtractedEntity(
+            entity_type=entity["Type"],
+            entity_value=entity["Value"],
+            confidence=entity["Confidence"],
+            source_text=entity["Source"],
+            start_position=entity["Start"],
+            end_position=entity["End"],
+        )
 
     def _parse_summary_response(self, response: str) -> DocumentSummary:
         """Parse the LLM response to create a structured summary.

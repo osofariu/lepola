@@ -209,14 +209,15 @@ class Settings(BaseSettings):
                 return {
                     "provider": "ollama",
                     "api_key": self.ollama_api_key,
-                    "model": "llama3.1:8b",
+                    # "model": "llama3.1:8b",
+                    "model": "gemma3:27b",
                     "mock": True,
                 }
 
             return {
                 "provider": "ollama",
                 "api_key": self.ollama_api_key,
-                "model": "llama3.1:8b",
+                "model": "gemma3:27b",
             }
         else:
             raise ValueError(f"Unsupported LLM provider: {self.default_llm_provider}")
