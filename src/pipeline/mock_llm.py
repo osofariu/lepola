@@ -82,36 +82,34 @@ class MockLLM(BaseLanguageModel):
 
     def _mock_entity_extraction(self) -> str:
         """Generate mock entity extraction response."""
-        return """
-Type: law
-Value: Civil Rights Act
-Confidence: 0.95
-Source: Section 1 of the Civil Rights Act
-Start: 150
-End: 167
----
-Type: agency
-Value: Department of Justice
-Confidence: 0.90
-Source: enforcement shall be handled by the Department of Justice
-Start: 342
-End: 362
----
-Type: affected_group
-Value: Protected Classes
-Confidence: 0.85
-Source: individuals in protected classes
-Start: 489
-End: 510
----
-Type: legal_concept
-Value: Due Process
-Confidence: 0.88
-Source: due process requirements under the Fourteenth Amendment
-Start: 654
-End: 703
----
-"""
+        return """```json
+[
+  {
+    "Type": "legal_document",
+    "Value": "test legal document",
+    "Confidence": 0.95,
+    "Source": "This is a test legal document with some provisions and requirements.",
+    "Start": 5,
+    "End": 26
+  },
+  {
+    "Type": "legal_concept",
+    "Value": "provisions",
+    "Confidence": 0.85,
+    "Source": "with some provisions and requirements.",
+    "Start": 32,
+    "End": 42
+  },
+  {
+    "Type": "legal_concept", 
+    "Value": "requirements",
+    "Confidence": 0.85,
+    "Source": "with some provisions and requirements.",
+    "Start": 44,
+    "End": 55
+  }
+]
+```"""
 
     def _mock_document_summary(self) -> str:
         """Generate mock document summary response."""

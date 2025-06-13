@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     ollama_api_key: Optional[str] = Field(default=None, description="Ollama API key")
 
     default_llm_provider: str = Field(
-        default="openai", description="Default LLM provider"
+        default="ollama", description="Default LLM provider"
     )
 
     # Vector database settings

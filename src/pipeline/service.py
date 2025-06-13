@@ -28,6 +28,7 @@ from src.core.models import (
     KeyProvision,
     RiskAssessment,
 )
+from src.core.repository import analysis_repository
 
 
 class AIAnalysisError(Exception):
@@ -113,13 +114,6 @@ class AIAnalysisPipeline(LoggingMixin):
                 filename=document.filename,
                 content_length=len(document.content),
             )
-
-            self.logger.info(
-                "Starting document analysis",
-                document_id=str(document.id),
-                filename=document.filename,
-            )
-
             # Extract entities
             entities = await self._extract_entities(document)
 
@@ -127,16 +121,11 @@ class AIAnalysisPipeline(LoggingMixin):
                 "Extracted entities",
                 document_id=str(document.id),
                 filename=document.filename,
+                entities=entities,
             )
 
             # Generate summary with key provisions and risk assessments
             summary = await self._generate_summary(document, entities)
-
-            self.logger.info(
-                "Generated summary",
-                document_id=str(document.id),
-                filename=document.filename,
-            )
 
             # Determine overall confidence level
             confidence_level = self._calculate_confidence_level(
@@ -172,6 +161,23 @@ class AIAnalysisPipeline(LoggingMixin):
                 confidence=summary.confidence_score,
                 duration_ms=processing_time,
             )
+
+            # Persist results to the database
+            try:
+                analysis_repository.create(result)
+                self.logger.info(
+                    "Analysis result persisted to database",
+                    analysis_id=str(result.id),
+                    document_id=str(result.document_id),
+                )
+            except Exception as e:
+                self.logger.error(
+                    "Failed to persist analysis result",
+                    analysis_id=str(result.id),
+                    error=str(e),
+                    exc_info=True,
+                )
+                # Don't fail the entire analysis if persistence fails
 
             return result
 
@@ -354,7 +360,7 @@ class AIAnalysisPipeline(LoggingMixin):
             response_entities = json.loads(json_response)
             debug_log("json_match", response_entities)
 
-            entities = [self._map_to_entity(**entity) for entity in response_entities]
+            entities = [self._map_to_entity(entity) for entity in response_entities]
             return entities
 
         entities = []
@@ -410,12 +416,12 @@ class AIAnalysisPipeline(LoggingMixin):
     def _map_to_entity(self, entity: dict) -> ExtractedEntity:
         """Map the entity to the ExtractedEntity model."""
         return ExtractedEntity(
-            entity_type=entity["Type"],
-            entity_value=entity["Value"],
-            confidence=entity["Confidence"],
-            source_text=entity["Source"],
-            start_position=entity["Start"],
-            end_position=entity["End"],
+            entity_type=entity.get("Type") or entity.get("entity_type"),
+            entity_value=entity.get("Value") or entity.get("entity_value"),
+            confidence=entity.get("Confidence") or entity.get("confidence"),
+            source_text=entity.get("Source") or entity.get("source_text"),
+            start_position=entity.get("Start") or entity.get("start_position"),
+            end_position=entity.get("End") or entity.get("end_position"),
         )
 
     def _parse_summary_response(self, response: str) -> DocumentSummary:

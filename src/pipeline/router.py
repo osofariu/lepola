@@ -8,19 +8,22 @@ of ingested documents.
 from uuid import UUID, uuid4
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 
 from src.core.models import AnalysisStartResponse, ErrorResponse
-from src.core.repository import document_repository
+from src.core.repository import document_repository, analysis_repository
 from src.pipeline.service import AIAnalysisError, AIAnalysisPipeline
 
 router = APIRouter()
 
-# Initialize the AI pipeline
-ai_pipeline = AIAnalysisPipeline()
+# Simple in-memory store for analysis job status tracking (for async operations)
+# In production, use Redis/database with job queue
+analysis_job_status = {}
 
-# Simple in-memory store for analysis jobs (in production, use Redis/database)
-analysis_jobs = {}
+
+def get_ai_pipeline() -> AIAnalysisPipeline:
+    """Dependency injection for AI pipeline - can be mocked in tests."""
+    return AIAnalysisPipeline()
 
 
 @router.post(
@@ -34,11 +37,14 @@ analysis_jobs = {}
     summary="Start document analysis",
     description="Trigger AI analysis of an ingested document.",
 )
-async def analyze_document(document_id: UUID):
+async def analyze_document(
+    document_id: UUID, ai_pipeline: AIAnalysisPipeline = Depends(get_ai_pipeline)
+):
     """Start AI analysis of a document.
 
     Args:
         document_id: ID of the document to analyze.
+        ai_pipeline: AI pipeline service (injected).
 
     Returns:
         AnalysisStartResponse: Analysis startup confirmation.
@@ -62,57 +68,75 @@ async def analyze_document(document_id: UUID):
                 detail=f"Document {document_id} is not ready for analysis. Status: {document.processing_status.value}",
             )
 
-        # 3. Generate unique analysis ID
-        analysis_id = uuid4()
-
-        # 4. Store analysis job info (in production, this would be in a proper job queue)
-        analysis_jobs[str(analysis_id)] = {
-            "document_id": str(document_id),
-            "status": "queued",
-            "created_at": document.created_at.isoformat(),
-            "document_filename": document.filename,
-            "document_type": document.file_type.value,
-        }
-
-        # 5. Queue the analysis job (for now, we'll start it immediately)
+        # 3. Queue the analysis job (for now, we'll start it immediately)
         # In production, this would be sent to a background task queue like Celery
-        try:
-            # Start analysis in background (simplified for now)
-            analysis_jobs[str(analysis_id)]["status"] = "processing"
+        analysis_id = None
+        analysis_status = "failed"  # Default status
 
+        try:
             # Perform the analysis
             analysis_result = await ai_pipeline.analyze_document(document)
 
-            # Store the results
-            analysis_jobs[str(analysis_id)].update(
-                {
-                    "status": "completed",
-                    "result": analysis_result.model_dump(),
-                    "completed_at": analysis_result.created_at.isoformat(),
-                    "confidence_level": analysis_result.confidence_level.value,
-                    "processing_time_ms": analysis_result.processing_time_ms,
-                }
-            )
+            # Use the actual analysis result ID
+            analysis_id = analysis_result.id
+            analysis_status = "completed"
+
+            # Store job status for tracking
+            analysis_job_status[str(analysis_id)] = {
+                "document_id": str(document_id),
+                "status": analysis_status,
+                "created_at": document.created_at.isoformat(),
+                "document_filename": document.filename,
+                "document_type": document.file_type.value,
+                "result": analysis_result.model_dump(),
+                "completed_at": analysis_result.created_at.isoformat(),
+                "confidence_level": analysis_result.confidence_level.value,
+                "processing_time_ms": analysis_result.processing_time_ms,
+            }
 
         except AIAnalysisError as e:
-            analysis_jobs[str(analysis_id)].update(
-                {
-                    "status": "failed",
+            # Generate temporary ID for failed analysis
+            analysis_id = uuid4()
+            analysis_status = "failed"
+
+            try:
+                analysis_job_status[str(analysis_id)] = {
+                    "document_id": str(document_id),
+                    "status": analysis_status,
+                    "created_at": document.created_at.isoformat(),
+                    "document_filename": document.filename,
+                    "document_type": document.file_type.value,
                     "error": str(e),
                 }
-            )
-            # Don't raise here, we've queued the job and it will show as failed
+            except Exception:
+                # If we can't even store the status, we'll still have the variables set
+                pass
+
         except Exception as e:
-            analysis_jobs[str(analysis_id)].update(
-                {
-                    "status": "failed",
+            # Generate temporary ID for failed analysis
+            analysis_id = uuid4()
+            analysis_status = "failed"
+
+            try:
+                analysis_job_status[str(analysis_id)] = {
+                    "document_id": str(document_id),
+                    "status": analysis_status,
+                    "created_at": document.created_at.isoformat(),
+                    "document_filename": document.filename,
+                    "document_type": document.file_type.value,
                     "error": f"Unexpected error: {str(e)}",
                 }
-            )
+            except Exception:
+                # If we can't even store the status, we'll still have the variables set
+                pass
+
+        # Ensure we always have an analysis_id
+        if analysis_id is None:
+            analysis_id = uuid4()
 
         return AnalysisStartResponse(
             analysis_id=analysis_id,
-            status="queued",
+            status=analysis_status,
             estimated_completion_time=None,  # Could estimate based on document size
         )
 
@@ -147,61 +171,51 @@ async def get_analysis_results(analysis_id: UUID):
         HTTPException: If analysis results cannot be retrieved.
     """
     try:
-        # Check if analysis exists
-        analysis_job = analysis_jobs.get(str(analysis_id))
-        if not analysis_job:
+        # First check if it's a currently running job
+        analysis_job = analysis_job_status.get(str(analysis_id))
+        if analysis_job and analysis_job["status"] in ["queued", "processing"]:
+            return {
+                "analysis_id": str(analysis_id),
+                "status": analysis_job["status"],
+                "document_id": analysis_job["document_id"],
+                "document_filename": analysis_job["document_filename"],
+                "created_at": analysis_job["created_at"],
+            }
+
+        # Try to get completed analysis from database
+        analysis_result = analysis_repository.get_by_id(analysis_id)
+        if not analysis_result:
+            # Check if it's a failed job
+            if analysis_job and analysis_job["status"] == "failed":
+                return {
+                    "analysis_id": str(analysis_id),
+                    "status": "failed",
+                    "document_id": analysis_job["document_id"],
+                    "document_filename": analysis_job["document_filename"],
+                    "created_at": analysis_job["created_at"],
+                    "error": analysis_job["error"],
+                }
+
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Analysis {analysis_id} not found",
             )
 
-        # Return different responses based on status
-        if analysis_job["status"] == "queued":
-            return {
-                "analysis_id": str(analysis_id),
-                "status": "queued",
-                "document_id": analysis_job["document_id"],
-                "document_filename": analysis_job["document_filename"],
-                "created_at": analysis_job["created_at"],
-            }
+        # Get document info for response
+        document = document_repository.get_by_id(analysis_result.document_id)
+        document_filename = document.filename if document else "unknown"
 
-        elif analysis_job["status"] == "processing":
-            return {
-                "analysis_id": str(analysis_id),
-                "status": "processing",
-                "document_id": analysis_job["document_id"],
-                "document_filename": analysis_job["document_filename"],
-                "created_at": analysis_job["created_at"],
-            }
-
-        elif analysis_job["status"] == "completed":
-            return {
-                "analysis_id": str(analysis_id),
-                "status": "completed",
-                "document_id": analysis_job["document_id"],
-                "document_filename": analysis_job["document_filename"],
-                "created_at": analysis_job["created_at"],
-                "completed_at": analysis_job["completed_at"],
-                "confidence_level": analysis_job["confidence_level"],
-                "processing_time_ms": analysis_job["processing_time_ms"],
-                "result": analysis_job["result"],
-            }
-
-        elif analysis_job["status"] == "failed":
-            return {
-                "analysis_id": str(analysis_id),
-                "status": "failed",
-                "document_id": analysis_job["document_id"],
-                "document_filename": analysis_job["document_filename"],
-                "created_at": analysis_job["created_at"],
-                "error": analysis_job["error"],
-            }
-
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Unknown analysis status: {analysis_job['status']}",
-            )
+        return {
+            "analysis_id": str(analysis_id),
+            "status": "completed",
+            "document_id": str(analysis_result.document_id),
+            "document_filename": document_filename,
+            "created_at": analysis_result.created_at.isoformat(),
+            "completed_at": analysis_result.created_at.isoformat(),
+            "confidence_level": analysis_result.confidence_level.value,
+            "processing_time_ms": analysis_result.processing_time_ms,
+            "result": analysis_result.model_dump(),
+        }
 
     except HTTPException:
         raise
@@ -221,6 +235,7 @@ async def list_analyses(
     limit: int = 10,
     offset: int = 0,
     status_filter: Optional[str] = None,
+    requires_review: Optional[bool] = None,
 ):
     """List all analysis jobs with pagination and filtering.
 
@@ -228,36 +243,72 @@ async def list_analyses(
         limit: Maximum number of results to return.
         offset: Number of results to skip.
         status_filter: Filter by status (queued, processing, completed, failed).
+        requires_review: Filter by human review requirement (only applies to completed analyses).
 
     Returns:
         List of analysis jobs.
     """
     try:
-        # Filter jobs if status_filter is provided
-        jobs = analysis_jobs
-        if status_filter:
-            jobs = {
-                k: v for k, v in analysis_jobs.items() if v["status"] == status_filter
-            }
+        # Get completed analyses from database
+        completed_analyses = []
+        if not status_filter or status_filter == "completed":
+            db_results = analysis_repository.list_all(
+                limit=limit * 2,  # Get extra in case we need to filter
+                offset=0,
+                requires_review=(
+                    requires_review if status_filter == "completed" else None
+                ),
+            )
 
-        # Convert to list and apply pagination
-        job_list = [
-            {"analysis_id": analysis_id, **job_data}
-            for analysis_id, job_data in jobs.items()
-        ]
+            for result in db_results:
+                document = document_repository.get_by_id(result.document_id)
+                completed_analyses.append(
+                    {
+                        "analysis_id": str(result.id),
+                        "document_id": str(result.document_id),
+                        "document_filename": (
+                            document.filename if document else "unknown"
+                        ),
+                        "status": "completed",
+                        "created_at": result.created_at.isoformat(),
+                        "completed_at": result.created_at.isoformat(),
+                        "confidence_level": result.confidence_level.value,
+                        "processing_time_ms": result.processing_time_ms,
+                        "requires_human_review": result.requires_human_review,
+                    }
+                )
 
-        # Sort by creation time (most recent first)
-        job_list.sort(key=lambda x: x["created_at"], reverse=True)
+        # Get in-progress jobs from memory
+        in_progress_jobs = []
+        if not status_filter or status_filter in ["queued", "processing", "failed"]:
+            jobs = analysis_job_status
+            if status_filter:
+                jobs = {
+                    k: v
+                    for k, v in analysis_job_status.items()
+                    if v["status"] == status_filter
+                }
+
+            in_progress_jobs = [
+                {"analysis_id": analysis_id, **job_data}
+                for analysis_id, job_data in jobs.items()
+            ]
+
+        # Combine and sort all jobs
+        all_jobs = completed_analyses + in_progress_jobs
+        all_jobs.sort(key=lambda x: x["created_at"], reverse=True)
 
         # Apply pagination
-        paginated_jobs = job_list[offset : offset + limit]
+        total_count = len(all_jobs)
+        paginated_jobs = all_jobs[offset : offset + limit]
 
         return {
             "analyses": paginated_jobs,
-            "total": len(job_list),
+            "total": total_count,
             "limit": limit,
             "offset": offset,
             "status_filter": status_filter,
+            "requires_review": requires_review,
         }
 
     except Exception as e:
@@ -272,7 +323,9 @@ async def list_analyses(
     summary="Get pipeline status",
     description="Check the status and health of the AI pipeline service.",
 )
-async def get_pipeline_status():
+async def get_pipeline_status(
+    ai_pipeline: AIAnalysisPipeline = Depends(get_ai_pipeline),
+):
     """Get the status of the AI pipeline service.
 
     Returns:
@@ -280,18 +333,18 @@ async def get_pipeline_status():
     """
     try:
         # Calculate job statistics
-        total_jobs = len(analysis_jobs)
+        total_jobs = len(analysis_job_status)
         completed_jobs = sum(
-            1 for job in analysis_jobs.values() if job["status"] == "completed"
+            1 for job in analysis_job_status.values() if job["status"] == "completed"
         )
         failed_jobs = sum(
-            1 for job in analysis_jobs.values() if job["status"] == "failed"
+            1 for job in analysis_job_status.values() if job["status"] == "failed"
         )
         processing_jobs = sum(
-            1 for job in analysis_jobs.values() if job["status"] == "processing"
+            1 for job in analysis_job_status.values() if job["status"] == "processing"
         )
         queued_jobs = sum(
-            1 for job in analysis_jobs.values() if job["status"] == "queued"
+            1 for job in analysis_job_status.values() if job["status"] == "queued"
         )
 
         return {
@@ -314,3 +367,126 @@ async def get_pipeline_status():
             "model_available": False,
             "error": str(e),
         }
+
+
+@router.get(
+    "/document/{document_id}/analyses",
+    summary="Get analyses for a document",
+    description="Get all analysis results for a specific document.",
+    responses={
+        404: {"model": ErrorResponse, "description": "Document Not Found"},
+        500: {"model": ErrorResponse, "description": "Internal Server Error"},
+    },
+)
+async def get_document_analyses(document_id: UUID):
+    """Get all analysis results for a specific document.
+
+    Args:
+        document_id: ID of the document to get analyses for.
+
+    Returns:
+        List of analysis results for the document.
+
+    Raises:
+        HTTPException: If document is not found or retrieval fails.
+    """
+    try:
+        # Check if document exists
+        document = document_repository.get_by_id(document_id)
+        if not document:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Document with ID {document_id} not found",
+            )
+
+        # Get all analyses for this document
+        analyses = analysis_repository.list_by_document_id(document_id)
+
+        # Format response
+        analysis_list = []
+        for analysis in analyses:
+            analysis_list.append(
+                {
+                    "analysis_id": str(analysis.id),
+                    "document_id": str(analysis.document_id),
+                    "document_filename": document.filename,
+                    "status": "completed",
+                    "created_at": analysis.created_at.isoformat(),
+                    "confidence_level": analysis.confidence_level.value,
+                    "processing_time_ms": analysis.processing_time_ms,
+                    "requires_human_review": analysis.requires_human_review,
+                    "model_used": analysis.model_used,
+                    "entity_count": len(analysis.entities),
+                    "warning_count": len(analysis.warnings),
+                }
+            )
+
+        return {
+            "document_id": str(document_id),
+            "document_filename": document.filename,
+            "total_analyses": len(analysis_list),
+            "analyses": analysis_list,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve document analyses: {str(e)}",
+        )
+
+
+@router.delete(
+    "/analysis/{analysis_id}",
+    summary="Delete an analysis result",
+    description="Delete a completed analysis result from the database.",
+    responses={
+        404: {"model": ErrorResponse, "description": "Analysis Not Found"},
+        500: {"model": ErrorResponse, "description": "Internal Server Error"},
+    },
+)
+async def delete_analysis(analysis_id: UUID):
+    """Delete an analysis result.
+
+    Args:
+        analysis_id: ID of the analysis to delete.
+
+    Returns:
+        Confirmation of deletion.
+
+    Raises:
+        HTTPException: If analysis is not found or deletion fails.
+    """
+    try:
+        # Check if analysis exists in database
+        analysis_result = analysis_repository.get_by_id(analysis_id)
+        if not analysis_result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Analysis {analysis_id} not found",
+            )
+
+        # Delete from database
+        success = analysis_repository.delete(analysis_id)
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to delete analysis {analysis_id}",
+            )
+
+        # Also remove from in-memory status if present
+        analysis_job_status.pop(str(analysis_id), None)
+
+        return {
+            "message": f"Analysis {analysis_id} deleted successfully",
+            "analysis_id": str(analysis_id),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete analysis: {str(e)}",
+        )

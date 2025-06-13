@@ -108,6 +108,94 @@ class Database(LoggingMixin):
         """
         )
 
+        # Analysis results table
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS analysis_results (
+                id TEXT PRIMARY KEY,
+                document_id TEXT NOT NULL,
+                confidence_level TEXT NOT NULL,
+                processing_time_ms REAL NOT NULL,
+                model_used TEXT NOT NULL,
+                warnings TEXT,  -- JSON array as string
+                requires_human_review BOOLEAN NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT,
+                FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE
+            )
+        """
+        )
+
+        # Extracted entities table
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS extracted_entities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                analysis_id TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_value TEXT NOT NULL,
+                confidence REAL NOT NULL,
+                source_text TEXT NOT NULL,
+                start_position INTEGER NOT NULL,
+                end_position INTEGER NOT NULL,
+                FOREIGN KEY (analysis_id) REFERENCES analysis_results (id) ON DELETE CASCADE
+            )
+        """
+        )
+
+        # Document summaries table
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS document_summaries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                analysis_id TEXT NOT NULL,
+                executive_summary TEXT NOT NULL,
+                key_points TEXT,  -- JSON array as string
+                affected_groups TEXT,  -- JSON array as string
+                legal_precedents TEXT,  -- JSON array as string
+                implementation_timeline TEXT,
+                confidence_score REAL NOT NULL,
+                FOREIGN KEY (analysis_id) REFERENCES analysis_results (id) ON DELETE CASCADE
+            )
+        """
+        )
+
+        # Key provisions table
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS key_provisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                summary_id INTEGER NOT NULL,
+                provision_type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                impact_assessment TEXT NOT NULL,
+                confidence REAL NOT NULL,
+                source_section TEXT NOT NULL,
+                affected_groups TEXT,  -- JSON array as string
+                legal_references TEXT,  -- JSON array as string
+                FOREIGN KEY (summary_id) REFERENCES document_summaries (id) ON DELETE CASCADE
+            )
+        """
+        )
+
+        # Risk assessments table
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS risk_assessments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                summary_id INTEGER NOT NULL,
+                risk_type TEXT NOT NULL,
+                risk_level TEXT NOT NULL,
+                description TEXT NOT NULL,
+                affected_rights TEXT,  -- JSON array as string
+                mitigation_suggestions TEXT,  -- JSON array as string
+                confidence REAL NOT NULL,
+                FOREIGN KEY (summary_id) REFERENCES document_summaries (id) ON DELETE CASCADE
+            )
+        """
+        )
+
         # Create indexes for better performance
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at)"
@@ -120,6 +208,18 @@ class Database(LoggingMixin):
         )
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_metadata_document_id ON document_metadata(document_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_analysis_results_document_id ON analysis_results(document_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_analysis_results_created_at ON analysis_results(created_at)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_extracted_entities_analysis_id ON extracted_entities(analysis_id)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_document_summaries_analysis_id ON document_summaries(analysis_id)"
         )
 
     def _create_tables_sync(self, db: sqlite3.Connection) -> None:
@@ -181,6 +281,94 @@ class Database(LoggingMixin):
         """
         )
 
+        # Analysis results table
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS analysis_results (
+                id TEXT PRIMARY KEY,
+                document_id TEXT NOT NULL,
+                confidence_level TEXT NOT NULL,
+                processing_time_ms REAL NOT NULL,
+                model_used TEXT NOT NULL,
+                warnings TEXT,  -- JSON array as string
+                requires_human_review BOOLEAN NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT,
+                FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE
+            )
+        """
+        )
+
+        # Extracted entities table
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS extracted_entities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                analysis_id TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_value TEXT NOT NULL,
+                confidence REAL NOT NULL,
+                source_text TEXT NOT NULL,
+                start_position INTEGER NOT NULL,
+                end_position INTEGER NOT NULL,
+                FOREIGN KEY (analysis_id) REFERENCES analysis_results (id) ON DELETE CASCADE
+            )
+        """
+        )
+
+        # Document summaries table
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS document_summaries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                analysis_id TEXT NOT NULL,
+                executive_summary TEXT NOT NULL,
+                key_points TEXT,  -- JSON array as string
+                affected_groups TEXT,  -- JSON array as string
+                legal_precedents TEXT,  -- JSON array as string
+                implementation_timeline TEXT,
+                confidence_score REAL NOT NULL,
+                FOREIGN KEY (analysis_id) REFERENCES analysis_results (id) ON DELETE CASCADE
+            )
+        """
+        )
+
+        # Key provisions table
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS key_provisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                summary_id INTEGER NOT NULL,
+                provision_type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                impact_assessment TEXT NOT NULL,
+                confidence REAL NOT NULL,
+                source_section TEXT NOT NULL,
+                affected_groups TEXT,  -- JSON array as string
+                legal_references TEXT,  -- JSON array as string
+                FOREIGN KEY (summary_id) REFERENCES document_summaries (id) ON DELETE CASCADE
+            )
+        """
+        )
+
+        # Risk assessments table
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS risk_assessments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                summary_id INTEGER NOT NULL,
+                risk_type TEXT NOT NULL,
+                risk_level TEXT NOT NULL,
+                description TEXT NOT NULL,
+                affected_rights TEXT,  -- JSON array as string
+                mitigation_suggestions TEXT,  -- JSON array as string
+                confidence REAL NOT NULL,
+                FOREIGN KEY (summary_id) REFERENCES document_summaries (id) ON DELETE CASCADE
+            )
+        """
+        )
+
         # Create indexes for better performance
         db.execute(
             "CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at)"
@@ -193,6 +381,18 @@ class Database(LoggingMixin):
         )
         db.execute(
             "CREATE INDEX IF NOT EXISTS idx_metadata_document_id ON document_metadata(document_id)"
+        )
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_analysis_results_document_id ON analysis_results(document_id)"
+        )
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_analysis_results_created_at ON analysis_results(created_at)"
+        )
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_extracted_entities_analysis_id ON extracted_entities(analysis_id)"
+        )
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_document_summaries_analysis_id ON document_summaries(analysis_id)"
         )
 
 
