@@ -7,7 +7,13 @@ across all test modules.
 
 import os
 import pytest
+import tempfile
+import sqlite3
+from pathlib import Path
 from unittest.mock import patch
+
+from src.core.database import Database
+from src.core.repository import document_repository, analysis_repository
 
 
 @pytest.fixture(autouse=True)
@@ -69,6 +75,62 @@ def force_mock_llm():
 
 
 @pytest.fixture
+def temp_db():
+    """Create a temporary database for testing and ensure repositories use it."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        db_path = Path(temp_dir) / "test.db"
+
+        # Initialize database synchronously for testing
+        with sqlite3.connect(str(db_path)) as db:
+            db_instance = Database(str(db_path))
+            db_instance._create_tables_sync(db)
+            db.commit()
+
+        # Store original database paths
+        original_doc_path = document_repository.db_path
+        original_analysis_path = analysis_repository.db_path
+
+        # Override repository database paths to use test database
+        document_repository.db_path = str(db_path)
+        analysis_repository.db_path = str(db_path)
+
+        try:
+            yield Database(str(db_path))
+        finally:
+            # Restore original database paths
+            document_repository.db_path = original_doc_path
+            analysis_repository.db_path = original_analysis_path
+
+
+@pytest.fixture
+def temp_db_fast():
+    """Fast temporary database fixture with minimal setup."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        db_path = Path(temp_dir) / "test_fast.db"
+
+        # Initialize database
+        with sqlite3.connect(str(db_path)) as db:
+            db_instance = Database(str(db_path))
+            db_instance._create_tables_sync(db)
+            db.commit()
+
+        # Store original database paths
+        original_doc_path = document_repository.db_path
+        original_analysis_path = analysis_repository.db_path
+
+        # Override repository database paths to use test database
+        document_repository.db_path = str(db_path)
+        analysis_repository.db_path = str(db_path)
+
+        try:
+            yield Database(str(db_path))
+        finally:
+            # Restore original database paths
+            document_repository.db_path = original_doc_path
+            analysis_repository.db_path = original_analysis_path
+
+
+@pytest.fixture
 def mock_llm_config():
     """Direct fixture for MockLLM configuration."""
     return {
@@ -88,35 +150,3 @@ def fast_analysis_config():
         "enable_fact_checking": False,  # Disable for speed
     }
     return fast_config
-
-
-@pytest.fixture
-def temp_db_fast():
-    """Fast temporary database fixture with minimal setup."""
-    import tempfile
-    import sqlite3
-    from pathlib import Path
-    from src.core.database import Database
-    from src.core.repository import document_repository, analysis_repository
-
-    with tempfile.TemporaryDirectory() as temp_dir:
-        db_path = Path(temp_dir) / "test_fast.db"
-
-        # Initialize database
-        with sqlite3.connect(str(db_path)) as db:
-            db_instance = Database(str(db_path))
-            db_instance._create_tables_sync(db)
-            db.commit()
-
-        # Override repository paths
-        original_doc_path = document_repository.db_path
-        original_analysis_path = analysis_repository.db_path
-
-        document_repository.db_path = str(db_path)
-        analysis_repository.db_path = str(db_path)
-
-        yield Database(str(db_path))
-
-        # Restore paths
-        document_repository.db_path = original_doc_path
-        analysis_repository.db_path = original_analysis_path
