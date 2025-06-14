@@ -28,7 +28,7 @@ from src.core.models import (
     KeyProvision,
     RiskAssessment,
 )
-from src.core.repository import analysis_repository
+from src.core.repository import AnalysisRepository
 
 
 class AIAnalysisError(Exception):
@@ -40,10 +40,23 @@ class AIAnalysisError(Exception):
 class AIAnalysisPipeline(LoggingMixin):
     """AI pipeline for analyzing legal and policy documents."""
 
-    def __init__(self):
-        """Initialize the AI analysis pipeline."""
+    def __init__(self, analysis_repository: Optional[AnalysisRepository] = None):
+        """Initialize the AI analysis pipeline.
+
+        Args:
+            analysis_repository: Repository for saving analysis results.
+                                If None, creates a default instance.
+        """
         self.llm = self._initialize_llm()
         self.confidence_threshold = settings.confidence_threshold
+
+        # Use dependency injection for repository
+        if analysis_repository is None:
+            from src.core.repository import analysis_repository as default_repo
+
+            self.analysis_repository = default_repo
+        else:
+            self.analysis_repository = analysis_repository
 
     def _initialize_llm(self) -> BaseLanguageModel:
         """Initialize the language model based on configuration.
@@ -162,9 +175,9 @@ class AIAnalysisPipeline(LoggingMixin):
                 duration_ms=processing_time,
             )
 
-            # Persist results to the database
+            # Persist results to the database using injected repository
             try:
-                analysis_repository.create(result)
+                self.analysis_repository.create(result)
                 self.logger.info(
                     "Analysis result persisted to database",
                     analysis_id=str(result.id),

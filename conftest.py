@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.core.database import Database
-from src.core.repository import document_repository, analysis_repository
+from src.core.repository import DocumentRepository, AnalysisRepository
 
 
 @pytest.fixture(autouse=True)
@@ -74,60 +74,80 @@ def force_mock_llm():
         os.environ.pop("DEFAULT_LLM_PROVIDER", None)
 
 
-@pytest.fixture
-def temp_db():
-    """Create a temporary database for testing and ensure repositories use it."""
-    with tempfile.TemporaryDirectory() as temp_dir:
-        db_path = Path(temp_dir) / "test.db"
+class TestRepositories:
+    """Container for test-specific repository instances."""
 
-        # Initialize database synchronously for testing
-        with sqlite3.connect(str(db_path)) as db:
-            db_instance = Database(str(db_path))
+    def __init__(self, db_path: str):
+        """Initialize repositories with test database path."""
+        self.document_repo = DocumentRepository()
+        self.analysis_repo = AnalysisRepository()
+
+        # Override paths to use test database
+        self.document_repo.db_path = db_path
+        self.analysis_repo.db_path = db_path
+
+
+@pytest.fixture
+def test_db():
+    """Create isolated test database with repository instances.
+
+    This fixture creates a temporary database and returns repository
+    instances that use the test database instead of production.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        db_path = str(Path(temp_dir) / "test.db")
+
+        # Initialize database with tables
+        with sqlite3.connect(db_path) as db:
+            db_instance = Database(db_path)
             db_instance._create_tables_sync(db)
             db.commit()
 
-        # Store original database paths
-        original_doc_path = document_repository.db_path
-        original_analysis_path = analysis_repository.db_path
-
-        # Override repository database paths to use test database
-        document_repository.db_path = str(db_path)
-        analysis_repository.db_path = str(db_path)
-
-        try:
-            yield Database(str(db_path))
-        finally:
-            # Restore original database paths
-            document_repository.db_path = original_doc_path
-            analysis_repository.db_path = original_analysis_path
+        # Return test repositories that use the test database
+        yield TestRepositories(db_path)
 
 
 @pytest.fixture
-def temp_db_fast():
-    """Fast temporary database fixture with minimal setup."""
+def test_db_fast():
+    """Fast test database fixture for unit tests.
+
+    Similar to test_db but optimized for speed.
+    """
     with tempfile.TemporaryDirectory() as temp_dir:
-        db_path = Path(temp_dir) / "test_fast.db"
+        db_path = str(Path(temp_dir) / "test_fast.db")
 
         # Initialize database
-        with sqlite3.connect(str(db_path)) as db:
-            db_instance = Database(str(db_path))
+        with sqlite3.connect(db_path) as db:
+            db_instance = Database(db_path)
             db_instance._create_tables_sync(db)
             db.commit()
 
-        # Store original database paths
-        original_doc_path = document_repository.db_path
-        original_analysis_path = analysis_repository.db_path
+        # Return test repositories
+        yield TestRepositories(db_path)
 
-        # Override repository database paths to use test database
-        document_repository.db_path = str(db_path)
-        analysis_repository.db_path = str(db_path)
 
-        try:
-            yield Database(str(db_path))
-        finally:
-            # Restore original database paths
-            document_repository.db_path = original_doc_path
-            analysis_repository.db_path = original_analysis_path
+@pytest.fixture
+def mock_repositories(test_db_fast):
+    """Fixture that patches repository imports with test instances.
+
+    This ensures that FastAPI routes and any code importing repositories
+    will use the test database instead of production.
+    """
+    repos = test_db_fast
+
+    # Patch repository imports in ALL locations where they're used
+    with patch("src.core.repository.document_repository", repos.document_repo), patch(
+        "src.core.repository.analysis_repository", repos.analysis_repo
+    ), patch("src.pipeline.router.document_repository", repos.document_repo), patch(
+        "src.pipeline.router.analysis_repository", repos.analysis_repo
+    ), patch(
+        "src.pipeline.service.analysis_repository", repos.analysis_repo
+    ), patch(
+        "src.ingestion.router.document_repository", repos.document_repo
+    ), patch(
+        "src.ingestion.service.document_repository", repos.document_repo
+    ):
+        yield repos
 
 
 @pytest.fixture

@@ -1,17 +1,20 @@
 """
 Fast pipeline integration tests.
 
-This module contains optimized tests that use MockLLM and minimal setup
-for rapid test execution while ensuring tests use the test database.
+This module contains optimized tests that use MockLLM and proper
+repository dependency injection for true database isolation.
 """
 
 import pytest
 from fastapi.testclient import TestClient
 
 from src.core.models import DocumentType, ProcessingStatus, Document, DocumentMetadata
-from src.core.repository import document_repository
 from src.main import app
-from src.pipeline.router import get_ai_pipeline
+from src.pipeline.router import (
+    get_ai_pipeline,
+    get_document_repository,
+    get_analysis_repository,
+)
 from src.pipeline.service import AIAnalysisPipeline
 from src.pipeline.mock_llm import MockLLM
 
@@ -22,27 +25,34 @@ client = TestClient(app)
 class MockAIAnalysisPipeline(AIAnalysisPipeline):
     """Test pipeline that always uses MockLLM."""
 
-    def __init__(self):
+    def __init__(self, analysis_repository=None):
         """Initialize with MockLLM only."""
         self.llm = MockLLM()
         self.confidence_threshold = 0.7
+        self.analysis_repository = analysis_repository
 
 
 class TestPipelineFast:
-    """Fast pipeline tests using MockLLM and isolated test database."""
+    """Fast pipeline tests using MockLLM and proper database isolation."""
 
     def setup_method(self):
-        """Set up test method with mocked pipeline."""
-        # Override the dependency to use MockLLM
-        app.dependency_overrides[get_ai_pipeline] = lambda: MockAIAnalysisPipeline()
+        """Set up test method with mocked dependencies."""
+        # Clear any existing overrides
+        app.dependency_overrides.clear()
 
     def teardown_method(self):
         """Clean up after test."""
         # Clear overrides
         app.dependency_overrides.clear()
 
-    def test_analyze_nonexistent_document_fast(self, temp_db_fast):
+    def test_analyze_nonexistent_document_fast(self, test_db_fast):
         """Test analyzing a document that doesn't exist - fast version."""
+        repos = test_db_fast
+
+        # Override dependencies to use test repositories
+        app.dependency_overrides[get_document_repository] = lambda: repos.document_repo
+        app.dependency_overrides[get_analysis_repository] = lambda: repos.analysis_repo
+
         fake_id = "12345678-1234-5678-9abc-123456789012"
 
         response = client.post(f"/api/v1/pipeline/analyze/{fake_id}")
@@ -50,9 +60,15 @@ class TestPipelineFast:
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
 
-    def test_analyze_document_not_ready_fast(self, temp_db_fast):
+    def test_analyze_document_not_ready_fast(self, test_db_fast):
         """Test analyzing a document that's not ready - fast version."""
-        # Create document in test database
+        repos = test_db_fast
+
+        # Override dependencies to use test repositories
+        app.dependency_overrides[get_document_repository] = lambda: repos.document_repo
+        app.dependency_overrides[get_analysis_repository] = lambda: repos.analysis_repo
+
+        # Create document in test database using test repository
         document = Document(
             filename="test.txt",
             file_type=DocumentType.TEXT,
@@ -61,15 +77,21 @@ class TestPipelineFast:
             metadata=DocumentMetadata(title="Test Doc"),
             processing_status=ProcessingStatus.PENDING,  # Not ready
         )
-        document_id = document_repository.create(document).id
+        document_id = repos.document_repo.create(document).id
 
         response = client.post(f"/api/v1/pipeline/analyze/{document_id}")
 
         assert response.status_code == 400
         assert "not ready for analysis" in response.json()["detail"]
 
-    def test_successful_analysis_workflow_fast(self, temp_db_fast):
-        """Test the complete analysis workflow - fast version with dependency override."""
+    def test_successful_analysis_workflow_fast(self, test_db_fast):
+        """Test the complete analysis workflow with proper repository mocking."""
+        repos = test_db_fast
+
+        # Override dependencies to use test repositories
+        app.dependency_overrides[get_document_repository] = lambda: repos.document_repo
+        app.dependency_overrides[get_analysis_repository] = lambda: repos.analysis_repo
+
         # Create document in test database
         document = Document(
             filename="legal_doc.txt",
@@ -81,7 +103,7 @@ class TestPipelineFast:
             ),
             processing_status=ProcessingStatus.COMPLETED,
         )
-        document_id = document_repository.create(document).id
+        document_id = repos.document_repo.create(document).id
 
         # Start analysis
         response = client.post(f"/api/v1/pipeline/analyze/{document_id}")
@@ -116,8 +138,10 @@ class TestPipelineFast:
             assert "confidence_level" in result
             assert "processing_time_ms" in result
 
-    def test_database_isolation(self, temp_db_fast):
+    def test_database_isolation(self, test_db_fast):
         """Verify that tests use isolated test database."""
+        repos = test_db_fast
+
         # Create a document in test database
         document = Document(
             filename="isolation_test.txt",
@@ -127,18 +151,25 @@ class TestPipelineFast:
             metadata=DocumentMetadata(title="Isolation Test"),
             processing_status=ProcessingStatus.COMPLETED,
         )
-        document_id = document_repository.create(document).id
+        document_id = repos.document_repo.create(document).id
 
         # Verify document exists in test database
-        retrieved_doc = document_repository.get_by_id(document_id)
+        retrieved_doc = repos.document_repo.get_by_id(document_id)
         assert retrieved_doc is not None
         assert retrieved_doc.filename == "isolation_test.txt"
 
         # Verify the test database path is being used
-        assert "test_fast.db" in document_repository.db_path
+        assert "test_fast.db" in repos.document_repo.db_path
+        assert repos.document_repo.db_path != "./data/app.db"  # Not production DB
 
-    def test_multiple_analyses_same_document(self, temp_db_fast):
+    def test_multiple_analyses_same_document(self, test_db_fast):
         """Test that multiple analyses can be run on the same document."""
+        repos = test_db_fast
+
+        # Override dependencies to use test repositories
+        app.dependency_overrides[get_document_repository] = lambda: repos.document_repo
+        app.dependency_overrides[get_analysis_repository] = lambda: repos.analysis_repo
+
         # Create document in test database
         document = Document(
             filename="multi_analysis.txt",
@@ -148,7 +179,7 @@ class TestPipelineFast:
             metadata=DocumentMetadata(title="Multi Analysis Test"),
             processing_status=ProcessingStatus.COMPLETED,
         )
-        document_id = document_repository.create(document).id
+        document_id = repos.document_repo.create(document).id
 
         # Run first analysis
         response1 = client.post(f"/api/v1/pipeline/analyze/{document_id}")
@@ -170,8 +201,14 @@ class TestPipelineFast:
         assert check1.status_code == 200
         assert check2.status_code == 200
 
-    def test_document_analyses_endpoint(self, temp_db_fast):
+    def test_document_analyses_endpoint(self, test_db_fast):
         """Test the document-specific analyses endpoint."""
+        repos = test_db_fast
+
+        # Override dependencies to use test repositories
+        app.dependency_overrides[get_document_repository] = lambda: repos.document_repo
+        app.dependency_overrides[get_analysis_repository] = lambda: repos.analysis_repo
+
         # Create document in test database
         document = Document(
             filename="doc_analyses.txt",
@@ -181,7 +218,7 @@ class TestPipelineFast:
             metadata=DocumentMetadata(title="Doc Analyses Test"),
             processing_status=ProcessingStatus.COMPLETED,
         )
-        document_id = document_repository.create(document).id
+        document_id = repos.document_repo.create(document).id
 
         # Run an analysis
         client.post(f"/api/v1/pipeline/analyze/{document_id}")
@@ -197,8 +234,14 @@ class TestPipelineFast:
         assert data["document_id"] == str(document_id)
         assert data["total_analyses"] >= 1
 
-    def test_list_analyses_with_filter(self, temp_db_fast):
+    def test_list_analyses_with_filter(self, test_db_fast):
         """Test listing analyses with status filter."""
+        repos = test_db_fast
+
+        # Override dependencies to use test repositories
+        app.dependency_overrides[get_document_repository] = lambda: repos.document_repo
+        app.dependency_overrides[get_analysis_repository] = lambda: repos.analysis_repo
+
         # Create document in test database
         document = Document(
             filename="filter_test.txt",
@@ -208,7 +251,7 @@ class TestPipelineFast:
             metadata=DocumentMetadata(title="Filter Test"),
             processing_status=ProcessingStatus.COMPLETED,
         )
-        document_id = document_repository.create(document).id
+        document_id = repos.document_repo.create(document).id
 
         # Start analysis
         client.post(f"/api/v1/pipeline/analyze/{document_id}")
@@ -224,7 +267,69 @@ class TestPipelineFast:
         for analysis in data["analyses"]:
             assert analysis["status"] == "completed"
 
-    def test_pipeline_status_endpoint(self, temp_db_fast):
+    def test_analysis_database_persistence(self, test_db_fast):
+        """Test that analysis results are properly saved to and retrieved from database."""
+        repos = test_db_fast
+
+        # Override dependencies to use test repositories
+        app.dependency_overrides[get_document_repository] = lambda: repos.document_repo
+        app.dependency_overrides[get_analysis_repository] = lambda: repos.analysis_repo
+        # Override AI pipeline to use MockLLM
+        app.dependency_overrides[get_ai_pipeline] = lambda: MockAIAnalysisPipeline(
+            analysis_repository=repos.analysis_repo
+        )
+
+        # Create document in test database
+        document = Document(
+            filename="persistence_test.txt",
+            file_type=DocumentType.TEXT,
+            file_size=100,
+            content="Test document for database persistence verification.",
+            metadata=DocumentMetadata(title="Persistence Test"),
+            processing_status=ProcessingStatus.COMPLETED,
+        )
+        document_id = repos.document_repo.create(document).id
+
+        # Start analysis
+        response = client.post(f"/api/v1/pipeline/analyze/{document_id}")
+        assert response.status_code == 202
+        analysis_id = response.json()["analysis_id"]
+
+        # Check if analysis result was saved to test database
+        # (bypassing the router logic and checking database directly)
+        from uuid import UUID
+
+        analysis_result = repos.analysis_repo.get_by_id(UUID(analysis_id))
+
+        print(f"Analysis result in test DB: {analysis_result is not None}")
+        if analysis_result:
+            print(f"Analysis model used: {analysis_result.model_used}")
+            print(f"Analysis entities count: {len(analysis_result.entities)}")
+
+        # The analysis should be saved to test database
+        assert analysis_result is not None
+        assert analysis_result.model_used == "mock-gpt-4"
+
+    def test_repository_patching_debug(self, test_db_fast):
+        """Debug test to verify repository patching is working."""
+        repos = test_db_fast
+
+        # Check if the patched repositories are using test database paths
+        from src.pipeline.service import analysis_repository as service_analysis_repo
+        from src.pipeline.router import analysis_repository as router_analysis_repo
+        from src.core.repository import analysis_repository as core_analysis_repo
+
+        print(f"Service analysis_repository path: {service_analysis_repo.db_path}")
+        print(f"Router analysis_repository path: {router_analysis_repo.db_path}")
+        print(f"Core analysis_repository path: {core_analysis_repo.db_path}")
+        print(f"Test repos analysis path: {repos.analysis_repo.db_path}")
+
+        # They should all be using the test database
+        assert "test_fast.db" in service_analysis_repo.db_path
+        assert "test_fast.db" in router_analysis_repo.db_path
+        assert "test_fast.db" in core_analysis_repo.db_path
+
+    def test_pipeline_status_endpoint(self, test_db_fast):
         """Test the pipeline status endpoint."""
         response = client.get("/api/v1/pipeline/status")
 

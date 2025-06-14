@@ -2,16 +2,18 @@
 Integration tests for pipeline router with database connectivity.
 
 Tests the complete flow from document retrieval to analysis job management
-using isolated test databases.
+using proper repository dependency injection for true database isolation.
 """
 
-import pytest
 from fastapi.testclient import TestClient
 
 from src.core.models import DocumentType, ProcessingStatus, Document, DocumentMetadata
-from src.core.repository import document_repository
 from src.main import app
-from src.pipeline.router import get_ai_pipeline
+from src.pipeline.router import (
+    get_ai_pipeline,
+    get_document_repository,
+    get_analysis_repository,
+)
 from src.pipeline.service import AIAnalysisPipeline
 from src.pipeline.mock_llm import MockLLM
 
@@ -22,27 +24,34 @@ client = TestClient(app)
 class MockAIAnalysisPipeline(AIAnalysisPipeline):
     """Test pipeline that always uses MockLLM for integration tests."""
 
-    def __init__(self):
+    def __init__(self, analysis_repository=None):
         """Initialize with MockLLM only."""
         self.llm = MockLLM()
         self.confidence_threshold = 0.7
+        self.analysis_repository = analysis_repository
 
 
 class TestPipelineIntegration:
     """Integration tests for pipeline with proper database isolation."""
 
     def setup_method(self):
-        """Set up test method with mocked pipeline."""
-        # Override the dependency to use MockLLM for faster integration tests
-        app.dependency_overrides[get_ai_pipeline] = lambda: MockAIAnalysisPipeline()
+        """Set up test method with mocked dependencies."""
+        # Clear any existing overrides
+        app.dependency_overrides.clear()
 
     def teardown_method(self):
         """Clean up after test."""
         # Clear overrides
         app.dependency_overrides.clear()
 
-    def test_analyze_nonexistent_document(self, temp_db):
+    def test_analyze_nonexistent_document(self, test_db):
         """Test analyzing a document that doesn't exist."""
+        repos = test_db
+
+        # Override dependencies to use test repositories
+        app.dependency_overrides[get_document_repository] = lambda: repos.document_repo
+        app.dependency_overrides[get_analysis_repository] = lambda: repos.analysis_repo
+
         fake_id = "12345678-1234-5678-9abc-123456789012"
 
         response = client.post(f"/api/v1/pipeline/analyze/{fake_id}")
@@ -50,8 +59,14 @@ class TestPipelineIntegration:
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
 
-    def test_analyze_document_not_ready(self, temp_db):
+    def test_analyze_document_not_ready(self, test_db):
         """Test analyzing a document that's not in completed status."""
+        repos = test_db
+
+        # Override dependencies to use test repositories
+        app.dependency_overrides[get_document_repository] = lambda: repos.document_repo
+        app.dependency_overrides[get_analysis_repository] = lambda: repos.analysis_repo
+
         # Create a document in pending status in test database
         document = Document(
             filename="test.txt",
@@ -61,15 +76,24 @@ class TestPipelineIntegration:
             metadata=DocumentMetadata(title="Test Doc"),
             processing_status=ProcessingStatus.PENDING,  # Not completed!
         )
-        document_id = document_repository.create(document).id
+        document_id = repos.document_repo.create(document).id
 
         response = client.post(f"/api/v1/pipeline/analyze/{document_id}")
 
         assert response.status_code == 400
         assert "not ready for analysis" in response.json()["detail"]
 
-    def test_successful_analysis_workflow(self, temp_db):
+    def test_successful_analysis_workflow(self, test_db):
         """Test the complete analysis workflow."""
+        repos = test_db
+
+        # Override dependencies to use test repositories
+        app.dependency_overrides[get_document_repository] = lambda: repos.document_repo
+        app.dependency_overrides[get_analysis_repository] = lambda: repos.analysis_repo
+        app.dependency_overrides[get_ai_pipeline] = lambda: MockAIAnalysisPipeline(
+            analysis_repository=repos.analysis_repo
+        )
+
         # 1. Create a completed document in test database
         document = Document(
             filename="legal_doc.txt",
@@ -81,7 +105,7 @@ class TestPipelineIntegration:
             ),
             processing_status=ProcessingStatus.COMPLETED,
         )
-        document_id = document_repository.create(document).id
+        document_id = repos.document_repo.create(document).id
 
         # 2. Start analysis
         response = client.post(f"/api/v1/pipeline/analyze/{document_id}")
@@ -119,8 +143,17 @@ class TestPipelineIntegration:
             assert "confidence_level" in result
             assert "processing_time_ms" in result
 
-    def test_list_analyses(self, temp_db):
+    def test_list_analyses(self, test_db):
         """Test listing analysis jobs."""
+        repos = test_db
+
+        # Override dependencies to use test repositories
+        app.dependency_overrides[get_document_repository] = lambda: repos.document_repo
+        app.dependency_overrides[get_analysis_repository] = lambda: repos.analysis_repo
+        app.dependency_overrides[get_ai_pipeline] = lambda: MockAIAnalysisPipeline(
+            analysis_repository=repos.analysis_repo
+        )
+
         # Create a document and start analysis in test database
         document = Document(
             filename="test_doc.txt",
@@ -130,7 +163,7 @@ class TestPipelineIntegration:
             metadata=DocumentMetadata(title="Test Document"),
             processing_status=ProcessingStatus.COMPLETED,
         )
-        document_id = document_repository.create(document).id
+        document_id = repos.document_repo.create(document).id
 
         # Start analysis
         start_response = client.post(f"/api/v1/pipeline/analyze/{document_id}")
@@ -157,8 +190,17 @@ class TestPipelineIntegration:
         assert "document_filename" in analysis
         assert "status" in analysis
 
-    def test_list_analyses_with_filter(self, temp_db):
+    def test_list_analyses_with_filter(self, test_db):
         """Test listing analyses with status filter."""
+        repos = test_db
+
+        # Override dependencies to use test repositories
+        app.dependency_overrides[get_document_repository] = lambda: repos.document_repo
+        app.dependency_overrides[get_analysis_repository] = lambda: repos.analysis_repo
+        app.dependency_overrides[get_ai_pipeline] = lambda: MockAIAnalysisPipeline(
+            analysis_repository=repos.analysis_repo
+        )
+
         # Create a document and start analysis in test database
         document = Document(
             filename="filter_test.txt",
@@ -168,7 +210,7 @@ class TestPipelineIntegration:
             metadata=DocumentMetadata(title="Filter Test"),
             processing_status=ProcessingStatus.COMPLETED,
         )
-        document_id = document_repository.create(document).id
+        document_id = repos.document_repo.create(document).id
 
         # Start analysis
         client.post(f"/api/v1/pipeline/analyze/{document_id}")
@@ -184,8 +226,14 @@ class TestPipelineIntegration:
         for analysis in data["analyses"]:
             assert analysis["status"] == "completed"
 
-    def test_pipeline_status(self, temp_db):
+    def test_pipeline_status(self, test_db):
         """Test getting pipeline status."""
+        repos = test_db
+
+        # Override dependencies to use test repositories
+        app.dependency_overrides[get_document_repository] = lambda: repos.document_repo
+        app.dependency_overrides[get_analysis_repository] = lambda: repos.analysis_repo
+
         response = client.get("/api/v1/pipeline/status")
 
         assert response.status_code == 200
@@ -204,8 +252,17 @@ class TestPipelineIntegration:
         assert "processing" in jobs
         assert "queued" in jobs
 
-    def test_analysis_pagination(self, temp_db):
+    def test_analysis_pagination(self, test_db):
         """Test pagination of analysis results."""
+        repos = test_db
+
+        # Override dependencies to use test repositories
+        app.dependency_overrides[get_document_repository] = lambda: repos.document_repo
+        app.dependency_overrides[get_analysis_repository] = lambda: repos.analysis_repo
+        app.dependency_overrides[get_ai_pipeline] = lambda: MockAIAnalysisPipeline(
+            analysis_repository=repos.analysis_repo
+        )
+
         # Create multiple documents and analyses in test database
         for i in range(3):
             document = Document(
@@ -216,7 +273,7 @@ class TestPipelineIntegration:
                 metadata=DocumentMetadata(title=f"Pagination Test {i}"),
                 processing_status=ProcessingStatus.COMPLETED,
             )
-            document_id = document_repository.create(document).id
+            document_id = repos.document_repo.create(document).id
             client.post(f"/api/v1/pipeline/analyze/{document_id}")
 
         # Test pagination
@@ -228,8 +285,14 @@ class TestPipelineIntegration:
         assert data["offset"] == 0
         assert len(data["analyses"]) <= 2
 
-    def test_invalid_analysis_id(self, temp_db):
+    def test_invalid_analysis_id(self, test_db):
         """Test retrieving analysis with invalid ID."""
+        repos = test_db
+
+        # Override dependencies to use test repositories
+        app.dependency_overrides[get_document_repository] = lambda: repos.document_repo
+        app.dependency_overrides[get_analysis_repository] = lambda: repos.analysis_repo
+
         fake_analysis_id = "99999999-9999-9999-9999-999999999999"
 
         response = client.get(f"/api/v1/pipeline/analysis/{fake_analysis_id}")
@@ -237,8 +300,14 @@ class TestPipelineIntegration:
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
 
-    def test_document_retrieval_error_handling(self, temp_db):
+    def test_document_retrieval_error_handling(self, test_db):
         """Test error handling for document retrieval issues."""
+        repos = test_db
+
+        # Override dependencies to use test repositories
+        app.dependency_overrides[get_document_repository] = lambda: repos.document_repo
+        app.dependency_overrides[get_analysis_repository] = lambda: repos.analysis_repo
+
         # This test verifies that the database isolation is working
         # by ensuring no documents exist initially
         fake_id = "11111111-1111-1111-1111-111111111111"
@@ -248,8 +317,10 @@ class TestPipelineIntegration:
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
 
-    def test_database_isolation_verification(self, temp_db):
+    def test_database_isolation_verification(self, test_db):
         """Verify that tests are using isolated test database."""
+        repos = test_db
+
         # Create a document with a unique name
         document = Document(
             filename="isolation_verification.txt",
@@ -259,18 +330,28 @@ class TestPipelineIntegration:
             metadata=DocumentMetadata(title="Isolation Verification"),
             processing_status=ProcessingStatus.COMPLETED,
         )
-        document_id = document_repository.create(document).id
+        document_id = repos.document_repo.create(document).id
 
         # Verify document exists
-        retrieved_doc = document_repository.get_by_id(document_id)
+        retrieved_doc = repos.document_repo.get_by_id(document_id)
         assert retrieved_doc is not None
         assert retrieved_doc.filename == "isolation_verification.txt"
 
         # Verify we're using the test database
-        assert "test.db" in document_repository.db_path
+        assert "test.db" in repos.document_repo.db_path
+        assert repos.document_repo.db_path != "./data/app.db"  # Not production DB
 
-    def test_requires_review_filter(self, temp_db):
+    def test_requires_review_filter(self, test_db):
         """Test filtering analyses that require human review."""
+        repos = test_db
+
+        # Override dependencies to use test repositories
+        app.dependency_overrides[get_document_repository] = lambda: repos.document_repo
+        app.dependency_overrides[get_analysis_repository] = lambda: repos.analysis_repo
+        app.dependency_overrides[get_ai_pipeline] = lambda: MockAIAnalysisPipeline(
+            analysis_repository=repos.analysis_repo
+        )
+
         # Create document and analysis in test database
         document = Document(
             filename="review_test.txt",
@@ -280,7 +361,7 @@ class TestPipelineIntegration:
             metadata=DocumentMetadata(title="Review Test"),
             processing_status=ProcessingStatus.COMPLETED,
         )
-        document_id = document_repository.create(document).id
+        document_id = repos.document_repo.create(document).id
 
         # Start analysis
         client.post(f"/api/v1/pipeline/analyze/{document_id}")
@@ -293,8 +374,17 @@ class TestPipelineIntegration:
         response = client.get("/api/v1/pipeline/analyses?requires_review=false")
         assert response.status_code == 200
 
-    def test_document_specific_analyses(self, temp_db):
+    def test_document_specific_analyses(self, test_db):
         """Test getting analyses for a specific document."""
+        repos = test_db
+
+        # Override dependencies to use test repositories
+        app.dependency_overrides[get_document_repository] = lambda: repos.document_repo
+        app.dependency_overrides[get_analysis_repository] = lambda: repos.analysis_repo
+        app.dependency_overrides[get_ai_pipeline] = lambda: MockAIAnalysisPipeline(
+            analysis_repository=repos.analysis_repo
+        )
+
         # Create document in test database
         document = Document(
             filename="specific_doc.txt",
@@ -304,7 +394,7 @@ class TestPipelineIntegration:
             metadata=DocumentMetadata(title="Specific Doc Test"),
             processing_status=ProcessingStatus.COMPLETED,
         )
-        document_id = document_repository.create(document).id
+        document_id = repos.document_repo.create(document).id
 
         # Run multiple analyses
         client.post(f"/api/v1/pipeline/analyze/{document_id}")

@@ -11,7 +11,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, status, Depends
 
 from src.core.models import AnalysisStartResponse, ErrorResponse
-from src.core.repository import document_repository, analysis_repository
+from src.core.repository import DocumentRepository, AnalysisRepository
 from src.pipeline.service import AIAnalysisError, AIAnalysisPipeline
 
 router = APIRouter()
@@ -21,9 +21,25 @@ router = APIRouter()
 analysis_job_status = {}
 
 
-def get_ai_pipeline() -> AIAnalysisPipeline:
+def get_document_repository() -> DocumentRepository:
+    """Dependency injection for document repository - can be mocked in tests."""
+    from src.core.repository import document_repository
+
+    return document_repository
+
+
+def get_analysis_repository() -> AnalysisRepository:
+    """Dependency injection for analysis repository - can be mocked in tests."""
+    from src.core.repository import analysis_repository
+
+    return analysis_repository
+
+
+def get_ai_pipeline(
+    analysis_repo: AnalysisRepository = Depends(get_analysis_repository),
+) -> AIAnalysisPipeline:
     """Dependency injection for AI pipeline - can be mocked in tests."""
-    return AIAnalysisPipeline()
+    return AIAnalysisPipeline(analysis_repository=analysis_repo)
 
 
 @router.post(
@@ -38,13 +54,16 @@ def get_ai_pipeline() -> AIAnalysisPipeline:
     description="Trigger AI analysis of an ingested document.",
 )
 async def analyze_document(
-    document_id: UUID, ai_pipeline: AIAnalysisPipeline = Depends(get_ai_pipeline)
+    document_id: UUID,
+    ai_pipeline: AIAnalysisPipeline = Depends(get_ai_pipeline),
+    document_repo: DocumentRepository = Depends(get_document_repository),
 ):
     """Start AI analysis of a document.
 
     Args:
         document_id: ID of the document to analyze.
         ai_pipeline: AI pipeline service (injected).
+        document_repo: Document repository (injected).
 
     Returns:
         AnalysisStartResponse: Analysis startup confirmation.
@@ -54,7 +73,7 @@ async def analyze_document(
     """
     try:
         # 1. Retrieve the document from the database
-        document = document_repository.get_by_id(document_id)
+        document = document_repo.get_by_id(document_id)
         if not document:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -158,7 +177,11 @@ async def analyze_document(
         500: {"model": ErrorResponse, "description": "Internal Server Error"},
     },
 )
-async def get_analysis_results(analysis_id: UUID):
+async def get_analysis_results(
+    analysis_id: UUID,
+    document_repo: DocumentRepository = Depends(get_document_repository),
+    analysis_repo: AnalysisRepository = Depends(get_analysis_repository),
+):
     """Get analysis results by ID.
 
     Args:
@@ -183,7 +206,7 @@ async def get_analysis_results(analysis_id: UUID):
             }
 
         # Try to get completed analysis from database
-        analysis_result = analysis_repository.get_by_id(analysis_id)
+        analysis_result = analysis_repo.get_by_id(analysis_id)
         if not analysis_result:
             # Check if it's a failed job
             if analysis_job and analysis_job["status"] == "failed":
@@ -202,7 +225,7 @@ async def get_analysis_results(analysis_id: UUID):
             )
 
         # Get document info for response
-        document = document_repository.get_by_id(analysis_result.document_id)
+        document = document_repo.get_by_id(analysis_result.document_id)
         document_filename = document.filename if document else "unknown"
 
         return {
@@ -236,6 +259,8 @@ async def list_analyses(
     offset: int = 0,
     status_filter: Optional[str] = None,
     requires_review: Optional[bool] = None,
+    document_repo: DocumentRepository = Depends(get_document_repository),
+    analysis_repo: AnalysisRepository = Depends(get_analysis_repository),
 ):
     """List all analysis jobs with pagination and filtering.
 
@@ -252,7 +277,7 @@ async def list_analyses(
         # Get completed analyses from database
         completed_analyses = []
         if not status_filter or status_filter == "completed":
-            db_results = analysis_repository.list_all(
+            db_results = analysis_repo.list_all(
                 limit=limit * 2,  # Get extra in case we need to filter
                 offset=0,
                 requires_review=(
@@ -261,7 +286,7 @@ async def list_analyses(
             )
 
             for result in db_results:
-                document = document_repository.get_by_id(result.document_id)
+                document = document_repo.get_by_id(result.document_id)
                 completed_analyses.append(
                     {
                         "analysis_id": str(result.id),
@@ -378,7 +403,11 @@ async def get_pipeline_status(
         500: {"model": ErrorResponse, "description": "Internal Server Error"},
     },
 )
-async def get_document_analyses(document_id: UUID):
+async def get_document_analyses(
+    document_id: UUID,
+    document_repo: DocumentRepository = Depends(get_document_repository),
+    analysis_repo: AnalysisRepository = Depends(get_analysis_repository),
+):
     """Get all analysis results for a specific document.
 
     Args:
@@ -392,7 +421,7 @@ async def get_document_analyses(document_id: UUID):
     """
     try:
         # Check if document exists
-        document = document_repository.get_by_id(document_id)
+        document = document_repo.get_by_id(document_id)
         if not document:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -400,7 +429,7 @@ async def get_document_analyses(document_id: UUID):
             )
 
         # Get all analyses for this document
-        analyses = analysis_repository.list_by_document_id(document_id)
+        analyses = analysis_repo.list_by_document_id(document_id)
 
         # Format response
         analysis_list = []
@@ -446,7 +475,10 @@ async def get_document_analyses(document_id: UUID):
         500: {"model": ErrorResponse, "description": "Internal Server Error"},
     },
 )
-async def delete_analysis(analysis_id: UUID):
+async def delete_analysis(
+    analysis_id: UUID,
+    analysis_repo: AnalysisRepository = Depends(get_analysis_repository),
+):
     """Delete an analysis result.
 
     Args:
@@ -460,7 +492,7 @@ async def delete_analysis(analysis_id: UUID):
     """
     try:
         # Check if analysis exists in database
-        analysis_result = analysis_repository.get_by_id(analysis_id)
+        analysis_result = analysis_repo.get_by_id(analysis_id)
         if not analysis_result:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -468,7 +500,7 @@ async def delete_analysis(analysis_id: UUID):
             )
 
         # Delete from database
-        success = analysis_repository.delete(analysis_id)
+        success = analysis_repo.delete(analysis_id)
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
