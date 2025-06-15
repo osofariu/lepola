@@ -9,11 +9,19 @@ import os
 import pytest
 import tempfile
 import sqlite3
+import warnings
 from pathlib import Path
 from unittest.mock import patch
 
 from src.core.database import Database
 from src.core.repository import DocumentRepository, AnalysisRepository
+
+# Suppress the FastAPI TestClient deprecation warning
+warnings.filterwarnings(
+    "ignore",
+    message="The 'app' shortcut is now deprecated.*",
+    category=DeprecationWarning,
+)
 
 
 @pytest.fixture(autouse=True)

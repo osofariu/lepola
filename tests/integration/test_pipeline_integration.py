@@ -5,6 +5,15 @@ Tests the complete flow from document retrieval to analysis job management
 using proper repository dependency injection for true database isolation.
 """
 
+import warnings
+
+# Suppress the FastAPI TestClient deprecation warning
+warnings.filterwarnings(
+    "ignore",
+    message="The 'app' shortcut is now deprecated.*",
+    category=DeprecationWarning,
+)
+
 from fastapi.testclient import TestClient
 
 from src.core.models import DocumentType, ProcessingStatus, Document, DocumentMetadata
