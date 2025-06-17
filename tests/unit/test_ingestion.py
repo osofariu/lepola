@@ -7,11 +7,11 @@ including file upload, URL processing, and content extraction.
 
 import io
 import tempfile
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
 
-from src.core.models import DocumentType, ProcessingStatus
+from src.core.models import DocumentType, ProcessingStatus, Document, DocumentMetadata
 from src.ingestion.service import DocumentIngestionError, DocumentIngestionService
 from datetime import datetime
 
@@ -60,16 +60,37 @@ class TestDocumentIngestionService:
         content = "This is a sample legal document for testing purposes."
         file_data = io.BytesIO(content.encode("utf-8"))
 
-        document = await ingestion_service.ingest_file(
-            file_data=file_data, filename="test.txt", file_size=len(content)
+        # Create a mock document that would be returned by the repository
+        mock_document = Document(
+            filename="test.txt",
+            file_type=DocumentType.TEXT,
+            file_size=len(content),
+            content=content,
+            metadata=DocumentMetadata(word_count=len(content.split())),
+            processing_status=ProcessingStatus.COMPLETED,
+            checksum="mock_checksum",
         )
 
-        assert document.filename == "test.txt"
-        assert document.file_type == DocumentType.TEXT
-        assert document.content == content
-        assert document.processing_status == ProcessingStatus.COMPLETED
-        assert document.checksum is not None
-        assert document.metadata.word_count > 0
+        # Create a mock repository
+        mock_repo = MagicMock()
+        mock_repo.create.return_value = mock_document
+
+        # Patch the document repository
+        with patch("src.ingestion.service.document_repository", mock_repo):
+            document = await ingestion_service.ingest_file(
+                file_data=file_data, filename="test.txt", file_size=len(content)
+            )
+
+            # Verify the document was created with correct data
+            assert document.filename == "test.txt"
+            assert document.file_type == DocumentType.TEXT
+            assert document.content == content
+            assert document.processing_status == ProcessingStatus.COMPLETED
+            assert document.checksum == "mock_checksum"
+            assert document.metadata.word_count > 0
+
+            # Verify the repository was called
+            mock_repo.create.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ingest_file_too_large(self, ingestion_service):
@@ -156,7 +177,25 @@ async def test_ingest_url_with_mock():
 
     mock_response_content = b"<html><body>Test content</body></html>"
 
-    with patch("aiohttp.ClientSession.get") as mock_get:
+    # Create a mock document that would be returned by the repository
+    mock_document = Document(
+        filename="test.html",
+        file_type=DocumentType.URL,
+        file_size=len(mock_response_content),
+        content="Test content",
+        metadata=DocumentMetadata(word_count=2),
+        processing_status=ProcessingStatus.COMPLETED,
+        source_url="https://example.com/test.html",
+        checksum="mock_checksum",
+    )
+
+    # Create a mock repository
+    mock_repo = MagicMock()
+    mock_repo.create.return_value = mock_document
+
+    with patch("aiohttp.ClientSession.get") as mock_get, patch(
+        "src.ingestion.service.document_repository", mock_repo
+    ):
         # Mock the async context manager
         mock_response = AsyncMock()
         mock_response.status = 200
@@ -170,6 +209,10 @@ async def test_ingest_url_with_mock():
         assert document.source_url == "https://example.com/test.html"
         assert document.file_type == DocumentType.URL
         assert "Test content" in document.content
+        assert document.checksum == "mock_checksum"
+
+        # Verify the repository was called
+        mock_repo.create.assert_called_once()
 
 
 def test_pdf_date_parsing():
