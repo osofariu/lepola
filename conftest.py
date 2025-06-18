@@ -146,15 +146,7 @@ def mock_repositories(test_db_fast):
     # Patch repository imports in ALL locations where they're used
     with patch("src.core.repository.document_repository", repos.document_repo), patch(
         "src.core.repository.analysis_repository", repos.analysis_repo
-    ), patch("src.pipeline.router.document_repository", repos.document_repo), patch(
-        "src.pipeline.router.analysis_repository", repos.analysis_repo
-    ), patch(
-        "src.pipeline.service.analysis_repository", repos.analysis_repo
-    ), patch(
-        "src.ingestion.router.document_repository", repos.document_repo
-    ), patch(
-        "src.ingestion.service.document_repository", repos.document_repo
-    ):
+    ), patch("src.ingestion.router.document_repository", repos.document_repo):
         yield repos
 
 

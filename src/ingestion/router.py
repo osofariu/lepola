@@ -39,12 +39,16 @@ async def upload_document(
     metadata: Optional[str] = Form(
         None, description="Optional metadata as JSON string"
     ),
+    async_embedding: bool = Query(
+        True, description="Run embedding and indexing asynchronously after ingestion"
+    ),
 ) -> DocumentUploadResponse:
     """Upload and ingest a document file.
 
     Args:
         file: The uploaded file.
         metadata: Optional metadata as JSON string.
+        async_embedding: Whether to run embedding/indexing asynchronously after ingestion.
 
     Returns:
         DocumentUploadResponse: Upload status and document ID.
@@ -71,7 +75,10 @@ async def upload_document(
 
         # Ingest the document
         document = await ingestion_service.ingest_file(
-            file_data=file_data, filename=file.filename, file_size=file_size
+            file_data=file_data,
+            filename=file.filename,
+            file_size=file_size,
+            run_embedding=async_embedding,
         )
 
         return DocumentUploadResponse(
@@ -115,12 +122,16 @@ async def ingest_url(
     metadata: Optional[str] = Form(
         None, description="Optional metadata as JSON string"
     ),
+    async_embedding: bool = Query(
+        True, description="Run embedding and indexing asynchronously after ingestion"
+    ),
 ) -> DocumentUploadResponse:
     """Ingest content from a web URL.
 
     Args:
         url: The URL to fetch content from.
         metadata: Optional metadata as JSON string.
+        async_embedding: Whether to run embedding/indexing asynchronously after ingestion.
 
     Returns:
         DocumentUploadResponse: Ingestion status and document ID.
@@ -130,7 +141,9 @@ async def ingest_url(
     """
     try:
         # Ingest content from URL
-        document = await ingestion_service.ingest_url(url)
+        document = await ingestion_service.ingest_url(
+            url, run_embedding=async_embedding
+        )
 
         return DocumentUploadResponse(
             document_id=document.id,

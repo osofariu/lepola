@@ -196,6 +196,23 @@ class Database(LoggingMixin):
         """
         )
 
+        # Embeddings table
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS embeddings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_id TEXT NOT NULL,
+                chunk_id TEXT NOT NULL,
+                vector_id INTEGER NOT NULL,
+                chunk_text TEXT NOT NULL,
+                start_pos INTEGER NOT NULL,
+                end_pos INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE
+            )
+        """
+        )
+
         # Create indexes for better performance
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at)"
@@ -365,6 +382,23 @@ class Database(LoggingMixin):
                 mitigation_suggestions TEXT,  -- JSON array as string
                 confidence REAL NOT NULL,
                 FOREIGN KEY (summary_id) REFERENCES document_summaries (id) ON DELETE CASCADE
+            )
+        """
+        )
+
+        # Embeddings table
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS embeddings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_id TEXT NOT NULL,
+                chunk_id TEXT NOT NULL,
+                vector_id INTEGER NOT NULL,
+                chunk_text TEXT NOT NULL,
+                start_pos INTEGER NOT NULL,
+                end_pos INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE
             )
         """
         )

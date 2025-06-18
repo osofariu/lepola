@@ -23,6 +23,8 @@ from src.core.config import settings
 from src.core.logging import LoggingMixin, log_document_processing
 from src.core.models import Document, DocumentMetadata, DocumentType, ProcessingStatus
 from src.core.repository import document_repository
+from src.ingestion.embedding import process_document_embeddings
+import asyncio
 
 
 class DocumentIngestionError(Exception):
@@ -40,7 +42,11 @@ class DocumentIngestionService(LoggingMixin):
         self.supported_types = settings.get_supported_file_types()
 
     async def ingest_file(
-        self, file_data: BinaryIO, filename: str, file_size: int
+        self,
+        file_data: BinaryIO,
+        filename: str,
+        file_size: int,
+        run_embedding: bool = True,
     ) -> Document:
         """Ingest a file and extract its content and metadata.
 
@@ -48,6 +54,7 @@ class DocumentIngestionService(LoggingMixin):
             file_data: Binary file data.
             filename: Original filename.
             file_size: Size of the file in bytes.
+            run_embedding: Whether to run embedding/indexing after ingestion.
 
         Returns:
             Document: Processed document with extracted content and metadata.
@@ -108,6 +115,23 @@ class DocumentIngestionService(LoggingMixin):
                 file_type=file_type.value,
             )
 
+            # Optionally run embedding/indexing asynchronously
+            if run_embedding:
+                try:
+                    asyncio.create_task(
+                        process_document_embeddings(str(document.id), document.content)
+                    )
+                    self.logger.info(
+                        "Started async embedding/indexing job",
+                        document_id=str(document.id),
+                    )
+                except Exception as embed_exc:
+                    self.logger.error(
+                        "Failed to start embedding/indexing job",
+                        document_id=str(document.id),
+                        error=str(embed_exc),
+                    )
+
             return document
 
         except Exception as e:
@@ -119,11 +143,12 @@ class DocumentIngestionService(LoggingMixin):
             )
             raise DocumentIngestionError(f"Failed to ingest document: {str(e)}")
 
-    async def ingest_url(self, url: str) -> Document:
+    async def ingest_url(self, url: str, run_embedding: bool = True) -> Document:
         """Ingest content from a web URL.
 
         Args:
             url: URL to fetch content from.
+            run_embedding: Whether to run embedding/indexing after ingestion.
 
         Returns:
             Document: Processed document with extracted content.
@@ -196,6 +221,23 @@ class DocumentIngestionService(LoggingMixin):
                 document_id=str(document.id),
                 url=url,
             )
+
+            # Optionally run embedding/indexing asynchronously
+            if run_embedding:
+                try:
+                    asyncio.create_task(
+                        process_document_embeddings(str(document.id), document.content)
+                    )
+                    self.logger.info(
+                        "Started async embedding/indexing job",
+                        document_id=str(document.id),
+                    )
+                except Exception as embed_exc:
+                    self.logger.error(
+                        "Failed to start embedding/indexing job",
+                        document_id=str(document.id),
+                        error=str(embed_exc),
+                    )
 
             return document
 

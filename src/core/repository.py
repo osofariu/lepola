@@ -23,6 +23,7 @@ from src.core.models import (
     KeyProvision,
     RiskAssessment,
     ConfidenceLevel,
+    Embedding,
 )
 
 
@@ -715,3 +716,85 @@ class AnalysisRepository(LoggingMixin):
 
 # Global repository instances
 analysis_repository = AnalysisRepository()
+
+
+class EmbeddingRepository(LoggingMixin):
+    """Repository for embedding database operations."""
+
+    def __init__(self):
+        database_url = settings.database_url
+        if database_url.startswith("sqlite:///"):
+            self.db_path = database_url[10:]
+        else:
+            self.db_path = database_url
+
+    def create(self, embedding: Embedding) -> Embedding:
+        """Create a new embedding record in the database."""
+        with sqlite3.connect(self.db_path) as db:
+            cursor = db.execute(
+                """
+                INSERT INTO embeddings (
+                    document_id, chunk_id, vector_id, chunk_text, start_pos, end_pos, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    embedding.document_id,
+                    embedding.chunk_id,
+                    embedding.vector_id,
+                    embedding.chunk_text,
+                    embedding.start_pos,
+                    embedding.end_pos,
+                    embedding.created_at.isoformat(),
+                ),
+            )
+            db.commit()
+            embedding.id = cursor.lastrowid
+        self.logger.info("Embedding created in database", embedding_id=embedding.id)
+        return embedding
+
+    def get_by_document_id(self, document_id: str) -> list[Embedding]:
+        """Get all embeddings for a document."""
+        with sqlite3.connect(self.db_path) as db:
+            cursor = db.execute(
+                """
+                SELECT id, document_id, chunk_id, vector_id, chunk_text, start_pos, end_pos, created_at
+                FROM embeddings WHERE document_id = ?
+                ORDER BY vector_id ASC
+                """,
+                (document_id,),
+            )
+            rows = cursor.fetchall()
+        return [
+            Embedding(
+                id=row[0],
+                document_id=row[1],
+                chunk_id=row[2],
+                vector_id=row[3],
+                chunk_text=row[4],
+                start_pos=row[5],
+                end_pos=row[6],
+                created_at=datetime.fromisoformat(row[7]),
+            )
+            for row in rows
+        ]
+
+    def list_by_document_id(self, document_id: str) -> list[Embedding]:
+        """Alias for get_by_document_id for consistency."""
+        return self.get_by_document_id(document_id)
+
+    def delete_by_document_id(self, document_id: str) -> int:
+        """Delete all embeddings for a document. Returns number deleted."""
+        with sqlite3.connect(self.db_path) as db:
+            cursor = db.execute(
+                "DELETE FROM embeddings WHERE document_id = ?", (document_id,)
+            )
+            db.commit()
+            deleted = cursor.rowcount
+        self.logger.info(
+            "Embeddings deleted for document", document_id=document_id, count=deleted
+        )
+        return deleted
+
+
+# Global repository instance
+embedding_repository = EmbeddingRepository()

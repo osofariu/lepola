@@ -300,3 +300,37 @@ class ErrorResponse(BaseModel):
         default=None, description="Additional error details"
     )
     timestamp: datetime = Field(default_factory=utc_now, description="Error timestamp")
+
+
+class Embedding(BaseModel):
+    """Model for document chunk embeddings and their metadata.
+
+    Attributes:
+        id: Unique identifier for the embedding record.
+        document_id: ID of the source document.
+        chunk_id: Unique identifier for the chunk within the document.
+        vector_id: Index of the embedding in the FAISS index.
+        chunk_text: The text content of the chunk.
+        start_pos: Start character position of the chunk in the document.
+        end_pos: End character position of the chunk in the document.
+        created_at: Timestamp when the embedding was created.
+    """
+
+    id: Optional[int] = Field(
+        default=None, description="Unique identifier for the embedding record"
+    )
+    document_id: str = Field(..., description="ID of the source document")
+    chunk_id: str = Field(
+        ..., description="Unique identifier for the chunk within the document"
+    )
+    vector_id: int = Field(..., description="Index of the embedding in the FAISS index")
+    chunk_text: str = Field(..., description="The text content of the chunk")
+    start_pos: int = Field(
+        ..., description="Start character position of the chunk in the document"
+    )
+    end_pos: int = Field(
+        ..., description="End character position of the chunk in the document"
+    )
+    created_at: datetime = Field(
+        default_factory=utc_now, description="Timestamp when the embedding was created"
+    )
