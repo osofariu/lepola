@@ -121,12 +121,6 @@ class AIAnalysisPipeline(LoggingMixin):
         start_time = time.time()
 
         try:
-            debug_log(
-                "🚀 Starting document analysis",
-                doc_id=str(document.id),
-                filename=document.filename,
-                content_length=len(document.content),
-            )
             # Extract entities
             entities = await self._extract_entities(document)
 
@@ -276,9 +270,11 @@ class AIAnalysisPipeline(LoggingMixin):
             template="""
             Analyze the following legal/policy document and provide a comprehensive summary.
             
-            Document: {text}
+            Document: 
+            {text}
             
-            Extracted entities: {entities}
+            Extracted entities: 
+            {entities}
             
             Please provide:
             1. Executive Summary (2-3 paragraphs)
@@ -314,12 +310,13 @@ class AIAnalysisPipeline(LoggingMixin):
                 text=document.content[:4000],  # Limit text length
                 entities=entities_text,
             )
-
+            self.logger.debug("** sending summary prompt to llm **", prompt=prompt)
             response = await self.llm.ainvoke(prompt)
+            self.logger.debug("** summary response **", response=response)
 
             # Parse the response into structured summary
             summary = self._parse_summary_response(response.content)
-
+            self.logger.debug("** summary parsed **", summary=summary)
             return summary
 
         except Exception as e:
@@ -363,20 +360,23 @@ class AIAnalysisPipeline(LoggingMixin):
             List of parsed entities.
         """
 
-        debug_log("Parsing entity response:", response=response)
+        debug_log("** Parsing entity response:", response=response)
 
         # probably need to improve prompt to get the format consistent between models
         # but for now let's try to account for variations we have seen
-        json_match = re.search(r"```json", response)
-        if json_match:
+        if re.search(r"```json", response):
             json_response = response.split("```json")[1].split("```")[0]
             response_entities = json.loads(json_response)
-            debug_log("json_match", response_entities)
 
             entities = [self._map_to_entity(entity) for entity in response_entities]
             return entities
 
+        # sometimes it's wrapped in a markdown code string for no apparent reason
+        if re.search(r"```$", response):
+            response = response.split("```")[1]
+
         entities = []
+
         sections = response.split("---")
 
         for section in sections:
@@ -390,16 +390,20 @@ class AIAnalysisPipeline(LoggingMixin):
                 if len(lines) < 6:
                     continue
 
-                match = re.search(r"**Type:**", lines[0])
+                match = re.search(r"\*\*Type:\*\*", lines[0])
                 if match:
-                    entity_type = re.sub(r"**Type:**", "", lines[0]).strip()
-                    entity_value = re.sub(r"**Value:**", "", lines[1]).strip()
-                    confidence = float(re.sub(r"**Confidence:**", "", lines[2]).strip())
-                    source_text = re.sub(r"**Source:**", "", lines[3]).strip()
-                    start_pos = (
-                        int(re.sub(r"**Start:**", "", lines[4]).strip()) + offset
+                    entity_type = re.sub(r"\*\*Type:\*\*", "", lines[0]).strip()
+                    entity_value = re.sub(r"\*\*Value:\*\*", "", lines[1]).strip()
+                    confidence = float(
+                        re.sub(r"\*\*Confidence:\*\*", "", lines[2]).strip()
                     )
-                    end_pos = int(re.sub(r"**End:**", "", lines[5]).strip()) + offset
+                    source_text = re.sub(r"\*\*Source:\*\*", "", lines[3]).strip()
+                    start_pos = (
+                        int(re.sub(r"\*\*Start:\*\*", "", lines[4]).strip()) + offset
+                    )
+                    end_pos = (
+                        int(re.sub(r"\*\*End:\*\*", "", lines[5]).strip()) + offset
+                    )
                 else:
                     entity_type = re.sub(r"Type:", "", lines[0]).strip()
                     entity_value = re.sub(r"Value:", "", lines[1]).strip()
@@ -416,26 +420,36 @@ class AIAnalysisPipeline(LoggingMixin):
                     start_position=start_pos,
                     end_position=end_pos,
                 )
-                debug_log("entity", entity)
                 entities.append(entity)
 
             except (ValueError, IndexError) as e:
                 self.logger.warning("Failed to parse entity", error=str(e))
-                debug_log("lines", lines)
+                debug_log("lines that it failed to parse", lines)
                 continue
 
         return entities
 
     def _map_to_entity(self, entity: dict) -> ExtractedEntity:
         """Map the entity to the ExtractedEntity model."""
-        return ExtractedEntity(
-            entity_type=entity.get("Type") or entity.get("entity_type"),
-            entity_value=entity.get("Value") or entity.get("entity_value"),
-            confidence=entity.get("Confidence") or entity.get("confidence"),
-            source_text=entity.get("Source") or entity.get("source_text"),
-            start_position=entity.get("Start") or entity.get("start_position"),
-            end_position=entity.get("End") or entity.get("end_position"),
-        )
+        try:
+            return ExtractedEntity(
+                entity_type=entity.get("Type") or entity.get("entity_type"),
+                entity_value=entity.get("Value") or entity.get("entity_value"),
+                confidence=entity.get("Confidence") or entity.get("confidence"),
+                source_text=entity.get("Source") or entity.get("source_text"),
+                start_position=entity.get("Start") or entity.get("start_position"),
+                end_position=entity.get("End") or entity.get("end_position"),
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to map entity: {str(entity)}", error=str(e))
+            return ExtractedEntity(
+                entity_type="unknown",
+                entity_value="unknown",
+                confidence=0.0,
+                source_text="unknown",
+                start_position=0,
+                end_position=0,
+            )
 
     def _parse_summary_response(self, response: str) -> DocumentSummary:
         """Parse the LLM response to create a structured summary.

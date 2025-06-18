@@ -8,9 +8,22 @@ processors for development and production environments.
 import logging
 import sys
 from typing import Any, Dict
+from pathlib import Path
+from datetime import datetime
+from logging.handlers import RotatingFileHandler
 
 import structlog
 from structlog.types import Processor
+
+
+class ImmediateFlushRotatingFileHandler(RotatingFileHandler):
+    """A RotatingFileHandler that flushes after each write."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Emit a record and flush immediately."""
+        super().emit(record)
+        if self.stream is not None:
+            self.stream.flush()
 
 
 def setup_logging(log_level: str = "INFO") -> None:
@@ -19,12 +32,42 @@ def setup_logging(log_level: str = "INFO") -> None:
     Args:
         log_level: The logging level to use (DEBUG, INFO, WARNING, ERROR, CRITICAL).
     """
-    # Configure standard library logging
-    logging.basicConfig(
-        format="%(message)s",
-        stream=sys.stdout,
-        level=getattr(logging, log_level.upper()),
+    # Ensure logs directory exists
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+
+    # Create timestamp for the log file
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = log_dir / f"app_{timestamp}.log"
+
+    # Set log level to DEBUG if DEBUG environment variable is true
+    import os
+
+    if os.getenv("DEBUG", "false").lower() == "true":
+        log_level = "DEBUG"
+
+    # Configure standard library logging with rotating file handler
+    file_handler = ImmediateFlushRotatingFileHandler(
+        filename=log_file,
+        maxBytes=1024 * 1024,  # 1MB
+        backupCount=5,  # Keep 5 backup files
+        encoding="utf-8",
+        delay=False,  # Create file immediately
     )
+
+    # Set handler level to match root logger
+    file_handler.setLevel(getattr(logging, log_level.upper()))
+
+    # Create a formatter and add it to the handler
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    file_handler.setFormatter(formatter)
+
+    # Set up the root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(getattr(logging, log_level.upper()))
+    root_logger.addHandler(file_handler)
 
     # Configure structlog
     structlog.configure(
@@ -215,9 +258,10 @@ class LoggingMixin:
 
 
 def debug_log(*args, **kwargs) -> None:
-    """Simple debug logger that always shows up in server output.
+    """Simple debug logger that writes to the application log file.
 
     Use this for debugging when you need immediate visibility.
+    Logs will be written to the same rotating log file as the rest of the application.
 
     Args:
         *args: Arguments to log (like print)
@@ -227,11 +271,7 @@ def debug_log(*args, **kwargs) -> None:
         debug_log("LLM Config:", config_dict)
         debug_log("Processing document", doc_id="123", status="active")
     """
-    import sys
-    import time
-
-    # Create a simple timestamp
-    timestamp = time.strftime("%H:%M:%S")
+    logger = get_logger("debug")
 
     # Format the message
     if args:
@@ -239,10 +279,5 @@ def debug_log(*args, **kwargs) -> None:
     else:
         message = "DEBUG"
 
-    # Add kwargs if provided
-    if kwargs:
-        kwargs_str = " ".join(f"{k}={v}" for k, v in kwargs.items())
-        message = f"{message} | {kwargs_str}"
-
-    # Force output to stderr (which uvicorn doesn't capture)
-    print(f"🐛 [{timestamp}] {message}", file=sys.stderr, flush=True)
+    # Log with both the message and any additional kwargs
+    logger.debug(message, **kwargs)
