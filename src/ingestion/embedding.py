@@ -2,7 +2,7 @@
 Embedding and FAISS management for document ingestion.
 
 - Paragraph chunking
-- Embedding via Ollama (snowflake-arctic-embed:335m)
+- Embedding via multiple providers (Ollama, OpenAI, AWS Bedrock, etc.)
 - FAISS index management (save/load)
 - Async support for embedding/indexing
 """
@@ -12,12 +12,12 @@ import logging
 from typing import List, Tuple, Optional
 from uuid import uuid4
 from datetime import datetime
-import aiohttp
 import faiss
 import numpy as np
 
 from src.core.models import Embedding
 from src.core.repository import embedding_repository
+from src.ai.embeddings_service import embedding_service, EmbeddingServiceError
 
 FAISS_INDEX_DIR = "data/faiss_indexes"
 FAISS_INDEX_FILE = os.path.join(FAISS_INDEX_DIR, "main.index")
@@ -47,28 +47,19 @@ def chunk_paragraphs(text: str) -> List[Tuple[str, int, int]]:
     return paragraphs
 
 
-async def embed_with_ollama(
-    paragraphs: List[str], model: str = "snowflake-arctic-embed:335m"
-) -> List[List[float]]:
-    """Get embeddings for paragraphs using Ollama's embedding API.
+async def embed_texts(paragraphs: List[str]) -> List[List[float]]:
+    """Get embeddings for paragraphs using the embedding service.
 
     Args:
         paragraphs: List of paragraph texts.
-        model: Ollama embedding model name.
 
     Returns:
         List of embedding vectors (lists of floats).
     """
-    url = "http://localhost:11434/api/embeddings"
-    payload = {"model": model, "prompt": paragraphs}
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload) as resp:
-                resp.raise_for_status()
-                data = await resp.json()
-                return data["embeddings"]
-    except Exception as e:
-        logger.error(f"Ollama embedding failed: {e}")
+        return await embedding_service.embed_texts(paragraphs)
+    except EmbeddingServiceError as e:
+        logger.error(f"Embedding service failed: {e}")
         raise
 
 
@@ -112,10 +103,13 @@ async def process_document_embeddings(document_id: str, text: str) -> List[Embed
     # 1. Chunk
     chunks = chunk_paragraphs(text)
     chunk_texts = [c[0] for c in chunks]
-    # 2. Embed
-    vectors = await embed_with_ollama(chunk_texts)
+
+    # 2. Embed using the embedding service
+    vectors = await embed_texts(chunk_texts)
+
     # 3. Index
     index = create_or_update_faiss_index(vectors)
+
     # 4. Store mapping
     embeddings = []
     for i, (chunk, (text, start, end)) in enumerate(zip(vectors, chunks)):

@@ -23,6 +23,7 @@ from src.ingestion.router import router as ingestion_router
 from src.pipeline.router import router as pipeline_router
 from src.querying.router import router as querying_router
 from src.outputs.router import router as outputs_router
+from src.ai.embeddings import router as embeddings_router
 
 # Setup logging
 logger = structlog.get_logger(__name__)
@@ -147,6 +148,9 @@ def create_app() -> FastAPI:
     )
     app.include_router(
         outputs_router, prefix="/api/v1/outputs", tags=["Output Generation"]
+    )
+    app.include_router(
+        embeddings_router, prefix="/api/v1/embeddings", tags=["Embeddings"]
     )
 
     @app.exception_handler(Exception)

@@ -45,15 +45,26 @@ class Settings(BaseSettings):
         default="ollama", description="Default LLM provider"
     )
 
+    # Embedding API settings
+    default_embedding_provider: str = Field(
+        default="ollama", description="Default embedding provider"
+    )
+    embedding_model: str = Field(
+        default="snowflake-arctic-embed:335m", description="Embedding model name"
+    )
+    embedding_api_key: Optional[str] = Field(
+        default=None, description="Embedding API key (for OpenAI, Cohere, etc.)"
+    )
+    ollama_base_url: str = Field(
+        default="http://localhost:11434", description="Ollama base URL"
+    )
+
     # Vector database settings
     vector_db_type: str = Field(
         default="faiss", description="Vector database type (faiss, chroma)"
     )
     vector_db_path: str = Field(
         default="./data/vectordb", description="Vector database storage path"
-    )
-    embedding_model: str = Field(
-        default="text-embedding-ada-002", description="Embedding model name"
     )
 
     # Document processing settings
@@ -221,6 +232,67 @@ class Settings(BaseSettings):
             }
         else:
             raise ValueError(f"Unsupported LLM provider: {self.default_llm_provider}")
+
+    def get_embedding_config(self) -> dict:
+        """Get embedding configuration based on the default provider.
+
+        Returns:
+            dict: Embedding configuration dictionary.
+
+        Raises:
+            ValueError: If no API key is configured for the selected provider.
+        """
+        if self.default_embedding_provider == "openai":
+            if not self.embedding_api_key:
+                raise ValueError("OpenAI API key not configured for embeddings")
+
+            # Check for test/mock API keys
+            if self.embedding_api_key.startswith("sk-test-"):
+                return {
+                    "provider": "openai",
+                    "api_key": self.embedding_api_key,
+                    "model": "text-embedding-ada-002",
+                    "mock": True,
+                }
+
+            return {
+                "provider": "openai",
+                "api_key": self.embedding_api_key,
+                "model": "text-embedding-ada-002",
+            }
+        elif self.default_embedding_provider == "bedrock":
+            if not self.aws_access_key_id or not self.aws_secret_access_key:
+                raise ValueError(
+                    "AWS credentials not configured for Bedrock embeddings"
+                )
+
+            return {
+                "provider": "bedrock",
+                "model": "amazon.titan-embed-text-v1",
+                "region": self.aws_region,
+                "aws_access_key_id": self.aws_access_key_id,
+                "aws_secret_access_key": self.aws_secret_access_key,
+            }
+        elif self.default_embedding_provider == "cohere":
+            if not self.embedding_api_key:
+                raise ValueError("Cohere API key not configured for embeddings")
+
+            return {
+                "provider": "cohere",
+                "api_key": self.embedding_api_key,
+                "model": "embed-english-v3.0",
+            }
+        elif self.default_embedding_provider == "ollama":
+            # Ollama doesn't require API key for local usage
+            return {
+                "provider": "ollama",
+                "model": self.embedding_model,
+                "base_url": self.ollama_base_url,
+            }
+        else:
+            raise ValueError(
+                f"Unsupported embedding provider: {self.default_embedding_provider}"
+            )
 
 
 # Global settings instance
