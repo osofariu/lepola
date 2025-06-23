@@ -7,6 +7,7 @@ legal and policy documents, extract entities, and generate summaries.
 
 import json
 import time
+import asyncio
 from typing import List, Optional
 from uuid import UUID
 import re
@@ -265,57 +266,17 @@ class AIAnalysisPipeline(LoggingMixin):
         Returns:
             DocumentSummary: Comprehensive document summary.
         """
-        summary_prompt = PromptTemplate(
-            input_variables=["text", "entities"],
-            template="""
-            Analyze the following legal/policy document and provide a comprehensive summary.
-            
-            Document: 
-            {text}
-            
-            Extracted entities: 
-            {entities}
-            
-            Please provide:
-            1. Executive Summary (2-3 paragraphs)
-            2. Key Points (bullet list)
-            3. Main Provisions (with impact assessments)
-            4. Risk Assessments (civil rights, privacy, etc.)
-            5. Affected Groups
-            6. Legal Precedents/References
-            7. Implementation Timeline (if applicable)
-            8. Overall Confidence Score (0.0-1.0)
-            
-            Focus on:
-            - Civil rights implications
-            - Privacy concerns
-            - Constitutional considerations
-            - Potential enforcement mechanisms
-            - Affected populations
-            
-            Format your response clearly with section headers.
-            """,
-        )
-
         try:
-            # Prepare entities summary for context
-            entities_text = "\n".join(
-                [
-                    f"- {e.entity_type}: {e.entity_value} (confidence: {e.confidence})"
-                    for e in entities[:20]  # Limit to top 20 entities
-                ]
-            )
+            # Split document into chunks
+            text_chunks = self._split_text(document.content)
 
-            prompt = summary_prompt.format(
-                text=document.content[:4000],  # Limit text length
-                entities=entities_text,
-            )
-            self.logger.debug("** sending summary prompt to llm **", prompt=prompt)
-            response = await self.llm.ainvoke(prompt)
-            self.logger.debug("** summary response **", response=response)
+            # Concurrently summarize all chunks
+            summarize_tasks = [self._summarize_chunk(chunk) for chunk in text_chunks]
+            chunk_summaries = await asyncio.gather(*summarize_tasks)
 
-            # Parse the response into structured summary
-            summary = self._parse_summary_response(response.content)
+            # Combine individual chunk summaries into a final comprehensive summary
+            summary = await self._combine_summaries(chunk_summaries, entities)
+
             self.logger.debug("** summary parsed **", summary=summary)
             return summary
 
@@ -332,19 +293,109 @@ class AIAnalysisPipeline(LoggingMixin):
                 confidence_score=0.1,
             )
 
-    def _split_text(self, text: str, chunk_size: int = 3000) -> List[str]:
+    async def _summarize_chunk(self, chunk: str) -> str:
+        """Summarize a single chunk of text.
+
+        Args:
+            chunk: A chunk of the document text.
+
+        Returns:
+            The summary of the chunk.
+        """
+        prompt_template = PromptTemplate(
+            input_variables=["chunk_text"],
+            template="""
+            Please summarize the following text from a legal document.
+            Focus on extracting the key facts, arguments, and conclusions.
+
+            Text:
+            {chunk_text}
+
+            Summary:
+            """,
+        )
+        prompt = prompt_template.format(chunk_text=chunk)
+        response = await self.llm.ainvoke(prompt)
+        return response.content
+
+    async def _combine_summaries(
+        self, summaries: List[str], entities: List[ExtractedEntity]
+    ) -> DocumentSummary:
+        """Combine individual chunk summaries into a final comprehensive summary.
+
+        Args:
+            summaries: A list of summaries from each document chunk.
+            entities: A list of extracted entities from the document.
+
+        Returns:
+            The final, consolidated DocumentSummary.
+        """
+        combined_summary_text = "\n".join(summaries)
+        entities_text = "\n".join(
+            [
+                f"- {e.entity_type}: {e.entity_value} (confidence: {e.confidence})"
+                for e in entities
+            ]
+        )
+
+        final_prompt_template = PromptTemplate(
+            input_variables=["combined_summaries", "entities"],
+            template="""
+            You are an expert legal analyst. The following are summaries of sections from a single legal or policy document.
+            Please synthesize these summaries into a single, cohesive, and comprehensive final analysis.
+
+            Section Summaries:
+            {combined_summaries}
+
+            Extracted Entities:
+            {entities}
+
+            Please provide:
+            1. Executive Summary (2-3 paragraphs, capturing the essence of the document)
+            2. Key Points (bullet list of the most critical takeaways)
+            3. Main Provisions (detailed explanation of the document's main articles or sections and their impact)
+            4. Risk Assessments (potential risks related to civil rights, privacy, constitutional issues, etc.)
+            5. Affected Groups (populations or sectors most impacted by this document)
+            6. Legal Precedents/References (any mentioned legal cases, statutes, or regulations)
+            7. Implementation Timeline (if specified in the document)
+            8. Overall Confidence Score (a float from 0.0 to 1.0, assessing the quality and completeness of your own summary based *only* on the provided text)
+
+            Format your response clearly with markdown headers for each section.
+            Ensure the final output is well-structured and easy to read.
+            """,
+        )
+
+        prompt = final_prompt_template.format(
+            combined_summaries=combined_summary_text, entities=entities_text
+        )
+        self.logger.debug("** Sending final combination prompt to llm **")
+        response = await self.llm.ainvoke(prompt)
+        self.logger.debug("** Final combination response received **")
+
+        return self._parse_summary_response(response.content)
+
+    def _split_text(
+        self, text: str, chunk_size: int = 3000, chunk_overlap: int = 200
+    ) -> List[str]:
         """Split text into manageable chunks for processing.
 
         Args:
             text: Text to split.
             chunk_size: Maximum size of each chunk.
+            chunk_overlap: Number of characters to overlap between chunks.
 
         Returns:
             List of text chunks.
         """
+        if len(text) <= chunk_size:
+            return [text]
+
         chunks = []
-        for i in range(0, len(text), chunk_size):
-            chunks.append(text[i : i + chunk_size])
+        start = 0
+        while start < len(text):
+            end = start + chunk_size
+            chunks.append(text[start:end])
+            start += chunk_size - chunk_overlap
         return chunks
 
     def _parse_entity_response(
@@ -432,13 +483,21 @@ class AIAnalysisPipeline(LoggingMixin):
     def _map_to_entity(self, entity: dict) -> ExtractedEntity:
         """Map the entity to the ExtractedEntity model."""
         try:
+            start_pos = entity.get("Start")
+            if start_pos is None:
+                start_pos = entity.get("start_position")
+
+            end_pos = entity.get("End")
+            if end_pos is None:
+                end_pos = entity.get("end_position")
+
             return ExtractedEntity(
                 entity_type=entity.get("Type") or entity.get("entity_type"),
                 entity_value=entity.get("Value") or entity.get("entity_value"),
                 confidence=entity.get("Confidence") or entity.get("confidence"),
                 source_text=entity.get("Source") or entity.get("source_text"),
-                start_position=entity.get("Start") or entity.get("start_position"),
-                end_position=entity.get("End") or entity.get("end_position"),
+                start_position=start_pos,
+                end_position=end_pos,
             )
         except Exception as e:
             self.logger.error(f"Failed to map entity: {str(entity)}", error=str(e))

@@ -10,8 +10,9 @@ function analyze_document() {
     -d ''
 }
 
-function main() {
+function analyze_ohio_bill() {
     analyze_document "f88cb1d4-30b5-4888-bfca-8f5bec74af77"
+   
 }
 
 

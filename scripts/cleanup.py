@@ -440,13 +440,13 @@ if __name__ == "__main__":
     if not input_args:
         # No arguments provided, list existing document names with their creation dates
         cur = con.cursor()
-        cur.execute("SELECT filename, created_at FROM documents")
+        cur.execute("SELECT filename, id, created_at FROM documents")
         documents = cur.fetchall()
 
         if documents:
             print("=== Available Documents ===")
-            for filename, created_at in documents:
-                print(f"Filename: {filename}, Created At: {created_at}")
+            for filename, id, created_at in documents:
+                print(f"Filename: {filename}, ID: {id}, Created At: {created_at}")
         else:
             print("No documents found in the database.")
         sys.exit(0)

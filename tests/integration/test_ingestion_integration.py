@@ -8,7 +8,7 @@ pytestmark = pytest.mark.usefixtures("mock_repositories")
 client = TestClient(app)
 
 
-@pytest.mark.asyncio
+# @pytest.mark.asyncio
 @patch("src.ingestion.embedding.process_document_embeddings", new_callable=AsyncMock)
 def test_upload_document_with_async_embedding(mock_embed, caplog):
     file_content = b"Test paragraph one.\n\nTest paragraph two."
@@ -27,7 +27,7 @@ def test_upload_document_with_async_embedding(mock_embed, caplog):
     )
 
 
-@pytest.mark.asyncio
+# @pytest.mark.asyncio
 @patch("src.ingestion.embedding.process_document_embeddings", new_callable=AsyncMock)
 def test_upload_document_without_async_embedding(mock_embed, caplog):
     file_content = b"Test paragraph one.\n\nTest paragraph two."
