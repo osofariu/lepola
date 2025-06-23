@@ -14,7 +14,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.core.database import Database
-from src.core.repository import DocumentRepository, AnalysisRepository
+from src.core.repository import (
+    DocumentRepository,
+    AnalysisRepository,
+    EmbeddingRepository,
+)
 
 # Suppress the FastAPI TestClient deprecation warning
 warnings.filterwarnings(
@@ -103,10 +107,12 @@ class TestRepositories:
         """Initialize repositories with test database path."""
         self.document_repo = DocumentRepository()
         self.analysis_repo = AnalysisRepository()
+        self.embedding_repo = EmbeddingRepository()
 
         # Override paths to use test database
         self.document_repo.db_path = db_path
         self.analysis_repo.db_path = db_path
+        self.embedding_repo.db_path = db_path
 
 
 @pytest.fixture
@@ -157,10 +163,20 @@ def mock_repositories(test_db_fast):
     """
     repos = test_db_fast
 
-    # Patch repository imports in ALL locations where they're used
+    # Patch ALL repository imports comprehensively
     with patch("src.core.repository.document_repository", repos.document_repo), patch(
         "src.core.repository.analysis_repository", repos.analysis_repo
-    ), patch("src.ingestion.router.document_repository", repos.document_repo):
+    ), patch("src.core.repository.embedding_repository", repos.embedding_repo), patch(
+        "src.ingestion.router.document_repository", repos.document_repo
+    ), patch(
+        "src.ingestion.service.document_repository", repos.document_repo
+    ), patch(
+        "src.ingestion.embedding.embedding_repository", repos.embedding_repo
+    ), patch(
+        "src.pipeline.router.get_document_repository", lambda: repos.document_repo
+    ), patch(
+        "src.pipeline.router.get_analysis_repository", lambda: repos.analysis_repo
+    ):
         yield repos
 
 
