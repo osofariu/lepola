@@ -23,6 +23,20 @@ warnings.filterwarnings(
     category=DeprecationWarning,
 )
 
+# Suppress the httpx deprecation warning about 'app' shortcut
+warnings.filterwarnings(
+    "ignore",
+    message=".*app.*shortcut.*deprecated.*",
+    category=DeprecationWarning,
+)
+
+# Alternative approach: filter by module
+warnings.filterwarnings(
+    "ignore",
+    category=DeprecationWarning,
+    module="httpx",
+)
+
 
 @pytest.fixture(autouse=True)
 def force_mock_llm():

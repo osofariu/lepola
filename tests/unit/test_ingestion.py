@@ -78,7 +78,10 @@ class TestDocumentIngestionService:
         # Patch the document repository
         with patch("src.ingestion.service.document_repository", mock_repo):
             document = await ingestion_service.ingest_file(
-                file_data=file_data, filename="test.txt", file_size=len(content)
+                file_data=file_data,
+                filename="test.txt",
+                file_size=len(content),
+                run_embedding=False,
             )
 
             # Verify the document was created with correct data
@@ -156,7 +159,7 @@ class TestDocumentIngestionService:
     async def test_ingest_url_invalid(self, ingestion_service):
         """Test that invalid URLs are rejected."""
         with pytest.raises(DocumentIngestionError, match="Invalid URL"):
-            await ingestion_service.ingest_url("not-a-url")
+            await ingestion_service.ingest_url("not-a-url", run_embedding=False)
 
     @pytest.mark.asyncio
     async def test_get_document_by_id_placeholder(self, ingestion_service):
@@ -204,7 +207,9 @@ async def test_ingest_url_with_mock():
 
         mock_get.return_value.__aenter__.return_value = mock_response
 
-        document = await service.ingest_url("https://example.com/test.html")
+        document = await service.ingest_url(
+            "https://example.com/test.html", run_embedding=False
+        )
 
         assert document.source_url == "https://example.com/test.html"
         assert document.file_type == DocumentType.URL
