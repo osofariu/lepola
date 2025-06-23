@@ -129,7 +129,7 @@ class AIAnalysisPipeline(LoggingMixin):
                 "Extracted entities",
                 document_id=str(document.id),
                 filename=document.filename,
-                entities=entities,
+                entitiesCount=len(entities),
             )
 
             # Generate summary with key provisions and risk assessments

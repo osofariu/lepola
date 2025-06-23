@@ -281,3 +281,152 @@ def debug_log(*args, **kwargs) -> None:
 
     # Log with both the message and any additional kwargs
     logger.debug(message, **kwargs)
+
+
+def log_endpoint_start(
+    endpoint: str,
+    method: str,
+    path: str,
+    request_id: str = None,
+    user_id: str = None,
+    **kwargs: Any,
+) -> None:
+    """Log when an endpoint starts processing.
+
+    Args:
+        endpoint: Name of the endpoint (e.g., "analyze_document").
+        method: HTTP method (GET, POST, etc.).
+        path: Request path.
+        request_id: Optional request ID for tracking.
+        user_id: Optional user ID for the request.
+        **kwargs: Additional fields to log.
+    """
+    logger = get_logger("endpoint")
+
+    log_data = {
+        "endpoint": endpoint,
+        "method": method,
+        "path": path,
+        "event_type": "start",
+        **kwargs,
+    }
+
+    if request_id:
+        log_data["request_id"] = request_id
+
+    if user_id:
+        log_data["user_id"] = user_id
+
+    logger.info("Endpoint started", **log_data)
+
+
+def log_endpoint_complete(
+    endpoint: str,
+    method: str,
+    path: str,
+    status_code: int,
+    duration_ms: float,
+    request_id: str = None,
+    user_id: str = None,
+    **kwargs: Any,
+) -> None:
+    """Log when an endpoint completes processing.
+
+    Args:
+        endpoint: Name of the endpoint (e.g., "analyze_document").
+        method: HTTP method (GET, POST, etc.).
+        path: Request path.
+        status_code: HTTP status code.
+        duration_ms: Request duration in milliseconds.
+        request_id: Optional request ID for tracking.
+        user_id: Optional user ID for the request.
+        **kwargs: Additional fields to log.
+    """
+    logger = get_logger("endpoint")
+
+    log_data = {
+        "endpoint": endpoint,
+        "method": method,
+        "path": path,
+        "status_code": status_code,
+        "duration_ms": duration_ms,
+        "event_type": "complete",
+        **kwargs,
+    }
+
+    if request_id:
+        log_data["request_id"] = request_id
+
+    if user_id:
+        log_data["user_id"] = user_id
+
+    if status_code >= 400:
+        logger.warning("Endpoint completed with error", **log_data)
+    else:
+        logger.info("Endpoint completed successfully", **log_data)
+
+
+def log_async_operation_start(
+    operation: str,
+    operation_id: str = None,
+    **kwargs: Any,
+) -> None:
+    """Log when an async operation starts.
+
+    Args:
+        operation: Type of async operation (e.g., "document_analysis").
+        operation_id: Optional operation ID for tracking.
+        **kwargs: Additional fields to log.
+    """
+    logger = get_logger("async")
+
+    log_data = {
+        "operation": operation,
+        "event_type": "start",
+        **kwargs,
+    }
+
+    if operation_id:
+        log_data["operation_id"] = operation_id
+
+    logger.info("Async operation started", **log_data)
+
+
+def log_async_operation_complete(
+    operation: str,
+    duration_ms: float,
+    success: bool = True,
+    operation_id: str = None,
+    error: str = None,
+    **kwargs: Any,
+) -> None:
+    """Log when an async operation completes.
+
+    Args:
+        operation: Type of async operation (e.g., "document_analysis").
+        duration_ms: Operation duration in milliseconds.
+        success: Whether the operation was successful.
+        operation_id: Optional operation ID for tracking.
+        error: Error message if operation failed.
+        **kwargs: Additional fields to log.
+    """
+    logger = get_logger("async")
+
+    log_data = {
+        "operation": operation,
+        "duration_ms": duration_ms,
+        "success": success,
+        "event_type": "complete",
+        **kwargs,
+    }
+
+    if operation_id:
+        log_data["operation_id"] = operation_id
+
+    if error:
+        log_data["error"] = error
+
+    if success:
+        logger.info("Async operation completed successfully", **log_data)
+    else:
+        logger.error("Async operation failed", **log_data)

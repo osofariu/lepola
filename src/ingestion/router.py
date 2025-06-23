@@ -5,17 +5,24 @@ This module provides REST API endpoints for uploading and ingesting
 various types of legal and policy documents.
 """
 
+import time
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import JSONResponse
 
 from src.core.models import DocumentUploadResponse, ErrorResponse, ProcessingStatus
 from src.core.repository import document_repository
+from src.core.logging import (
+    get_logger,
+    log_async_operation_start,
+    log_async_operation_complete,
+)
 from src.ingestion.service import DocumentIngestionError, DocumentIngestionService
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 # Initialize the ingestion service
 ingestion_service = DocumentIngestionService()
@@ -56,22 +63,62 @@ async def upload_document(
     Raises:
         HTTPException: If upload or processing fails.
     """
+    # Generate operation ID for tracking
+    operation_id = str(uuid4())
+
+    logger.info(
+        "Document upload requested",
+        filename=file.filename,
+        content_type=file.content_type,
+        async_embedding=async_embedding,
+        operation_id=operation_id,
+    )
+
     try:
         # Validate file
         if not file.filename:
+            logger.warning(
+                "Upload rejected: No filename provided",
+                operation_id=operation_id,
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="No filename provided"
             )
 
         # Get file size
+        logger.info(
+            "Reading uploaded file",
+            filename=file.filename,
+            operation_id=operation_id,
+        )
+
         file_size = 0
         content = await file.read()
         file_size = len(content)
+
+        logger.info(
+            "File read successfully",
+            filename=file.filename,
+            file_size=file_size,
+            operation_id=operation_id,
+        )
 
         # Reset file pointer and create a file-like object
         from io import BytesIO
 
         file_data = BytesIO(content)
+
+        # Log async operation start
+        log_async_operation_start(
+            operation="document_ingestion",
+            operation_id=operation_id,
+            filename=file.filename,
+            file_size=file_size,
+            content_type=file.content_type,
+            async_embedding=async_embedding,
+        )
+
+        ingestion_start_time = time.time()
 
         # Ingest the document
         document = await ingestion_service.ingest_file(
@@ -81,6 +128,26 @@ async def upload_document(
             run_embedding=async_embedding,
         )
 
+        ingestion_duration_ms = (time.time() - ingestion_start_time) * 1000
+
+        # Log async operation completion
+        log_async_operation_complete(
+            operation="document_ingestion",
+            duration_ms=ingestion_duration_ms,
+            success=True,
+            operation_id=operation_id,
+            document_id=str(document.id),
+            processing_status=document.processing_status.value,
+        )
+
+        logger.info(
+            "Document ingested successfully",
+            filename=file.filename,
+            document_id=str(document.id),
+            processing_status=document.processing_status.value,
+            operation_id=operation_id,
+        )
+
         return DocumentUploadResponse(
             document_id=document.id,
             status=document.processing_status,
@@ -88,6 +155,28 @@ async def upload_document(
         )
 
     except DocumentIngestionError as e:
+        ingestion_duration_ms = (
+            (time.time() - ingestion_start_time) * 1000
+            if "ingestion_start_time" in locals()
+            else 0
+        )
+
+        # Log async operation failure
+        log_async_operation_complete(
+            operation="document_ingestion",
+            duration_ms=ingestion_duration_ms,
+            success=False,
+            operation_id=operation_id,
+            error=str(e),
+        )
+
+        logger.error(
+            "Document ingestion failed",
+            filename=file.filename if file else "unknown",
+            error=str(e),
+            operation_id=operation_id,
+        )
+
         if "exceeds maximum" in str(e):
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=str(e)
@@ -99,6 +188,29 @@ async def upload_document(
         else:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
+        ingestion_duration_ms = (
+            (time.time() - ingestion_start_time) * 1000
+            if "ingestion_start_time" in locals()
+            else 0
+        )
+
+        # Log async operation failure
+        log_async_operation_complete(
+            operation="document_ingestion",
+            duration_ms=ingestion_duration_ms,
+            success=False,
+            operation_id=operation_id,
+            error=str(e),
+        )
+
+        logger.error(
+            "Unexpected error during document upload",
+            filename=file.filename if file else "unknown",
+            error=str(e),
+            operation_id=operation_id,
+            exc_info=True,
+        )
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error during document upload: {str(e)}",

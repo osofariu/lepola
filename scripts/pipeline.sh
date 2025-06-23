@@ -16,3 +16,7 @@ function analyze_ohio_bill() {
 }
 
 
+function analyze_rec_ai() {
+    analyze_document "55f1b8b5-050a-4c0d-b18f-13fe05572f95"
+   
+}

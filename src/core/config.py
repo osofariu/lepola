@@ -210,7 +210,7 @@ class Settings(BaseSettings):
                     "provider": "ollama",
                     "api_key": self.ollama_api_key,
                     # "model": "llama3.1:8b",
-                    "model": "gemma3:27b",
+                    "model": "gemma3:4b",
                     "mock": True,
                 }
 

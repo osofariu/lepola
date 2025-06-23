@@ -5,6 +5,7 @@ This module provides REST API endpoints for triggering AI analysis
 of ingested documents.
 """
 
+import time
 from uuid import UUID, uuid4
 from typing import Optional
 
@@ -12,9 +13,15 @@ from fastapi import APIRouter, HTTPException, status, Depends
 
 from src.core.models import AnalysisStartResponse, ErrorResponse
 from src.core.repository import DocumentRepository, AnalysisRepository
+from src.core.logging import (
+    get_logger,
+    log_async_operation_start,
+    log_async_operation_complete,
+)
 from src.pipeline.service import AIAnalysisError, AIAnalysisPipeline
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 # Simple in-memory store for analysis job status tracking (for async operations)
 # In production, use Redis/database with job queue
@@ -71,24 +78,74 @@ async def analyze_document(
     Raises:
         HTTPException: If analysis cannot be started.
     """
+    # Generate operation ID for tracking
+    operation_id = str(uuid4())
+
+    logger.info(
+        "Document analysis requested",
+        document_id=str(document_id),
+        operation_id=operation_id,
+    )
+
     try:
         # 1. Retrieve the document from the database
+        logger.info(
+            "Retrieving document from database",
+            document_id=str(document_id),
+            operation_id=operation_id,
+        )
+
         document = document_repo.get_by_id(document_id)
         if not document:
+            logger.warning(
+                "Document not found",
+                document_id=str(document_id),
+                operation_id=operation_id,
+            )
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Document with ID {document_id} not found",
             )
 
+        logger.info(
+            "Document retrieved successfully",
+            document_id=str(document_id),
+            filename=document.filename,
+            file_type=document.file_type.value,
+            file_size=document.file_size,
+            operation_id=operation_id,
+        )
+
         # 2. Check if document is in a valid state for analysis
         if document.processing_status.value != "completed":
+            logger.warning(
+                "Document not ready for analysis",
+                document_id=str(document_id),
+                status=document.processing_status.value,
+                operation_id=operation_id,
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Document {document_id} is not ready for analysis. Status: {document.processing_status.value}",
             )
 
-        # 3. Queue the analysis job (for now, we'll start it immediately)
-        # In production, this would be sent to a background task queue like Celery
+        # 3. Start the analysis job
+        logger.info(
+            "Starting AI analysis",
+            document_id=str(document_id),
+            operation_id=operation_id,
+        )
+
+        # Log async operation start
+        log_async_operation_start(
+            operation="document_analysis",
+            operation_id=operation_id,
+            document_id=str(document_id),
+            filename=document.filename,
+            file_size=document.file_size,
+        )
+
+        analysis_start_time = time.time()
         analysis_id = None
         analysis_status = "failed"  # Default status
 
@@ -99,6 +156,18 @@ async def analyze_document(
             # Use the actual analysis result ID
             analysis_id = analysis_result.id
             analysis_status = "completed"
+            analysis_duration_ms = (time.time() - analysis_start_time) * 1000
+
+            # Log async operation completion
+            log_async_operation_complete(
+                operation="document_analysis",
+                duration_ms=analysis_duration_ms,
+                success=True,
+                operation_id=operation_id,
+                analysis_id=str(analysis_id),
+                confidence_level=analysis_result.confidence_level.value,
+                processing_time_ms=analysis_result.processing_time_ms,
+            )
 
             # Store job status for tracking
             analysis_job_status[str(analysis_id)] = {
@@ -113,10 +182,38 @@ async def analyze_document(
                 "processing_time_ms": analysis_result.processing_time_ms,
             }
 
+            logger.info(
+                "Analysis completed successfully",
+                document_id=str(document_id),
+                analysis_id=str(analysis_id),
+                confidence_level=analysis_result.confidence_level.value,
+                processing_time_ms=analysis_result.processing_time_ms,
+                operation_id=operation_id,
+            )
+
         except AIAnalysisError as e:
             # Generate temporary ID for failed analysis
             analysis_id = uuid4()
             analysis_status = "failed"
+            analysis_duration_ms = (time.time() - analysis_start_time) * 1000
+
+            # Log async operation failure
+            log_async_operation_complete(
+                operation="document_analysis",
+                duration_ms=analysis_duration_ms,
+                success=False,
+                operation_id=operation_id,
+                analysis_id=str(analysis_id),
+                error=str(e),
+            )
+
+            logger.error(
+                "Analysis failed with AIAnalysisError",
+                document_id=str(document_id),
+                analysis_id=str(analysis_id),
+                error=str(e),
+                operation_id=operation_id,
+            )
 
             try:
                 analysis_job_status[str(analysis_id)] = {
@@ -135,6 +232,26 @@ async def analyze_document(
             # Generate temporary ID for failed analysis
             analysis_id = uuid4()
             analysis_status = "failed"
+            analysis_duration_ms = (time.time() - analysis_start_time) * 1000
+
+            # Log async operation failure
+            log_async_operation_complete(
+                operation="document_analysis",
+                duration_ms=analysis_duration_ms,
+                success=False,
+                operation_id=operation_id,
+                analysis_id=str(analysis_id),
+                error=str(e),
+            )
+
+            logger.error(
+                "Analysis failed with unexpected error",
+                document_id=str(document_id),
+                analysis_id=str(analysis_id),
+                error=str(e),
+                operation_id=operation_id,
+                exc_info=True,
+            )
 
             try:
                 analysis_job_status[str(analysis_id)] = {
@@ -153,6 +270,14 @@ async def analyze_document(
         if analysis_id is None:
             analysis_id = uuid4()
 
+        logger.info(
+            "Analysis job completed",
+            document_id=str(document_id),
+            analysis_id=str(analysis_id),
+            status=analysis_status,
+            operation_id=operation_id,
+        )
+
         return AnalysisStartResponse(
             analysis_id=analysis_id,
             status=analysis_status,
@@ -162,6 +287,13 @@ async def analyze_document(
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(
+            "Unexpected error in analyze_document endpoint",
+            document_id=str(document_id),
+            operation_id=operation_id,
+            error=str(e),
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to start analysis: {str(e)}",
