@@ -42,7 +42,6 @@ class BaseEmbeddingService(LoggingMixin):
         """
         try:
             embedding_config = settings.get_embedding_config()
-            debug_log("** GOT EMBEDDING CONFIG ** ", embedding_config)
 
             # Check if we should use a mock embedder for testing
             if embedding_config.get("mock", False) or (

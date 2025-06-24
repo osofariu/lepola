@@ -70,7 +70,6 @@ class AIAnalysisPipeline(LoggingMixin):
         """
         try:
             llm_config = settings.get_llm_config()
-            debug_log("** GOT LLM CONFIG ** ", llm_config)
 
             # Check if we should use a mock LLM for testing
             if llm_config.get("mock", False) or (
@@ -411,7 +410,10 @@ class AIAnalysisPipeline(LoggingMixin):
             List of parsed entities.
         """
 
-        debug_log("** Parsing entity response:", response=response)
+        debug_log(
+            "** Parsing entity response:",
+            response=(response[:100] + "...") if len(response) > 100 else response,
+        )
 
         # probably need to improve prompt to get the format consistent between models
         # but for now let's try to account for variations we have seen
