@@ -137,7 +137,7 @@ class Settings(BaseSettings):
     def _create_directories(self) -> None:
         """Create necessary directories if they don't exist."""
         directories = [
-            os.path.dirname(self.vector_db_path),
+            self.vector_db_path,  # Create the actual vectordb directory
             "./data",
             "./outputs",
             "./logs",

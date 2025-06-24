@@ -184,5 +184,19 @@ def main() -> None:
     )
 
 
+def dev_main() -> None:
+    """Development entry point with developer-friendly options."""
+    settings = Settings()
+    uvicorn.run(
+        "src.main:app",
+        host="0.0.0.0",  # Allow external connections for development
+        port=8000,
+        reload=True,  # Always reload in dev mode
+        log_level="debug",  # More verbose logging
+        access_log=True,  # Show access logs
+        use_colors=True,  # Colored output
+    )
+
+
 if __name__ == "__main__":
     main()
