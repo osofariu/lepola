@@ -56,13 +56,16 @@ def test_create_or_update_faiss_index(tmp_path):
 
 @pytest.mark.asyncio
 async def test_embed_with_ollama_mock():
+    """Test embedding with mocked embedding service."""
     paragraphs = ["A", "B"]
     dummy_vectors = [[0.1, 0.2], [0.3, 0.4]]
-    with patch("aiohttp.ClientSession.post") as mock_post:
-        mock_resp = AsyncMock()
-        mock_resp.__aenter__.return_value = mock_resp
-        mock_resp.json = AsyncMock(return_value={"embeddings": dummy_vectors})
-        mock_resp.raise_for_status = lambda: None
-        mock_post.return_value = mock_resp
-        result = await embedding.embed_with_ollama(paragraphs)
+
+    # Mock the embedding service's embed_texts method
+    with patch("src.ingestion.embedding.embedding_service.embed_texts") as mock_embed:
+        mock_embed.return_value = dummy_vectors
+
+        result = await embedding.embed_texts(paragraphs)
+
+        # Verify the mock was called correctly
+        mock_embed.assert_called_once_with(paragraphs)
         assert result == dummy_vectors
