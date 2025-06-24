@@ -113,6 +113,9 @@ class Settings(BaseSettings):
         default="sqlite:///./data/app.db",
         description="Database URL for metadata storage",
     )
+    database_timeout: float = Field(
+        default=30.0, description="Database connection timeout in seconds"
+    )
 
     # Rate limiting
     rate_limit_requests: int = Field(
@@ -221,7 +224,7 @@ class Settings(BaseSettings):
                     "provider": "ollama",
                     "api_key": self.ollama_api_key,
                     # "model": "llama3.1:8b",
-                    "model": "gemma3:4b",
+                    "model": "gemma3:1b",
                     "mock": True,
                 }
 

@@ -1,0 +1,29 @@
+* Issues
+**  keek getting entities outut from LLM in various formats.
+
+Here's a new one with square brackets for some reason.
+
+#+begin_example
+2025-06-24 09:42:52,455 - debug - DEBUG - 2025-06-24T13:42:52.455232Z [debug    ] ** Parsing entity response:    [debug] response=Here's the analysis of the provided legal/policy document, extracting key entities with the requested information:
+
+Type: [law]
+Value: [H.B. 96]
+Confidence: [0.95]
+Source: [H.B. 96 As Passed by the House]
+Start: [38]
+End: [46]
+---
+Type: [legal_concept]
+Value: [College Credit Plus Program (CCP)]
+Confidence: [0.98]
+Source: [College Credit Plus Program (CCP)]
+Start: [86]
+End: [120]
+---
+Type: [agency]
+Value: [Office of Research and Drafting]
+Confidence: [0.95]
+Source: [Office of Research and Drafting]
+Start: [1]
+End: [31]
+#+end_example

@@ -169,22 +169,8 @@ class AIAnalysisPipeline(LoggingMixin):
                 duration_ms=processing_time,
             )
 
-            # Persist results to the database using injected repository
-            try:
-                self.analysis_repository.create(result)
-                self.logger.info(
-                    "Analysis result persisted to database",
-                    analysis_id=str(result.id),
-                    document_id=str(result.document_id),
-                )
-            except Exception as e:
-                self.logger.error(
-                    "Failed to persist analysis result",
-                    analysis_id=str(result.id),
-                    error=str(e),
-                    exc_info=True,
-                )
-                # Don't fail the entire analysis if persistence fails
+            # Persist results to the database using injected repository with retry logic
+            await self._persist_analysis_result_with_retry(result)
 
             return result
 
@@ -196,6 +182,49 @@ class AIAnalysisPipeline(LoggingMixin):
                 exc_info=True,
             )
             raise AIAnalysisError(f"Analysis failed: {str(e)}")
+
+    async def _persist_analysis_result_with_retry(
+        self, result: AnalysisResult, max_retries: int = 3
+    ) -> None:
+        """Persist analysis result to database with retry logic.
+
+        Args:
+            result: Analysis result to persist.
+            max_retries: Maximum number of retry attempts.
+        """
+        for attempt in range(max_retries):
+            try:
+                self.analysis_repository.create(result)
+                self.logger.info(
+                    "Analysis result persisted to database",
+                    analysis_id=str(result.id),
+                    document_id=str(result.document_id),
+                    attempt=attempt + 1,
+                )
+                return
+            except Exception as e:
+                self.logger.warning(
+                    "Failed to persist analysis result (attempt %d/%d)",
+                    attempt + 1,
+                    max_retries,
+                    analysis_id=str(result.id),
+                    error=str(e),
+                )
+
+                if attempt == max_retries - 1:
+                    # Last attempt failed, log error but don't fail the entire analysis
+                    self.logger.error(
+                        "Failed to persist analysis result after %d attempts",
+                        max_retries,
+                        analysis_id=str(result.id),
+                        error=str(e),
+                        exc_info=True,
+                    )
+                    # Don't raise the exception - the analysis was successful,
+                    # we just couldn't persist it
+                else:
+                    # Wait before retrying (exponential backoff)
+                    await asyncio.sleep(2**attempt)
 
     async def _extract_entities(self, document: Document) -> List[ExtractedEntity]:
         """Extract legal entities from the document.

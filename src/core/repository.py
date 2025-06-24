@@ -47,7 +47,10 @@ class DocumentRepository(LoggingMixin):
         Returns:
             Created document
         """
-        with sqlite3.connect(self.db_path) as db:
+        with sqlite3.connect(self.db_path, timeout=settings.database_timeout) as db:
+            # Enable WAL mode for better concurrency
+            db.execute("PRAGMA journal_mode=WAL")
+
             # Insert document
             db.execute(
                 """
@@ -362,7 +365,12 @@ class AnalysisRepository(LoggingMixin):
         Returns:
             Created analysis result
         """
-        with sqlite3.connect(self.db_path) as db:
+        # Use configurable timeout for long-running operations
+        # and enable WAL mode for better concurrency
+        with sqlite3.connect(self.db_path, timeout=settings.database_timeout) as db:
+            # Enable WAL mode for better concurrency
+            db.execute("PRAGMA journal_mode=WAL")
+
             # Insert analysis result
             db.execute(
                 """
@@ -490,7 +498,10 @@ class AnalysisRepository(LoggingMixin):
         Returns:
             Analysis result if found, None otherwise
         """
-        with sqlite3.connect(self.db_path) as db:
+        with sqlite3.connect(self.db_path, timeout=settings.database_timeout) as db:
+            # Enable WAL mode for better concurrency
+            db.execute("PRAGMA journal_mode=WAL")
+
             # Get analysis result
             cursor = db.execute(
                 """
@@ -634,7 +645,10 @@ class AnalysisRepository(LoggingMixin):
         Returns:
             List of analysis results
         """
-        with sqlite3.connect(self.db_path) as db:
+        with sqlite3.connect(self.db_path, timeout=settings.database_timeout) as db:
+            # Enable WAL mode for better concurrency
+            db.execute("PRAGMA journal_mode=WAL")
+
             cursor = db.execute(
                 """
                 SELECT id FROM analysis_results 
