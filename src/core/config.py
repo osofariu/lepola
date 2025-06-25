@@ -78,10 +78,10 @@ class Settings(BaseSettings):
 
     # AI Pipeline settings
     confidence_threshold: float = Field(
-        default=0.7, description="Minimum confidence threshold for AI outputs"
+        default=0.6, description="Minimum confidence threshold for AI outputs"
     )
     max_context_length: int = Field(
-        default=4000, description="Maximum context length for LLM"
+        default=6000, description="Maximum context length for LLM"
     )
     enable_fact_checking: bool = Field(
         default=True, description="Enable fact-checking pipeline"
@@ -119,7 +119,7 @@ class Settings(BaseSettings):
 
     # HTTP timeout settings for long-running operations
     http_timeout: float = Field(
-        default=300.0, description="HTTP request timeout in seconds (5 minutes)"
+        default=600.0, description="HTTP request timeout in seconds (10 minutes)"
     )
     http_connect_timeout: float = Field(
         default=60.0, description="HTTP connection timeout in seconds"
@@ -234,15 +234,16 @@ class Settings(BaseSettings):
                 return {
                     "provider": "ollama",
                     "api_key": self.ollama_api_key,
-                    # "model": "llama3.1:8b",
-                    "model": "gemma3:1b",
+                    "model": "llama3.1:8b",
+                    # "model": "gemma3:1b",
                     "mock": True,
                 }
 
+            # Use a larger model for better performance
             return {
                 "provider": "ollama",
                 "api_key": self.ollama_api_key,
-                "model": "gemma3:27b",
+                "model": "llama3.1:8b",  # Better than gemma3:4b for analysis
             }
         else:
             raise ValueError(f"Unsupported LLM provider: {self.default_llm_provider}")

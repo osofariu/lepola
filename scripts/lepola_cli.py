@@ -898,5 +898,68 @@ def embeddings_status(ctx):
     asyncio.run(run())
 
 
+@cli.command()
+@click.option("--confidence", is_flag=True, help="Prioritize confidence over speed")
+@click.option("--speed", is_flag=True, help="Prioritize speed over confidence")
+@click.option("--report", is_flag=True, help="Show detailed system report")
+def model_select(confidence: bool, speed: bool, report: bool):
+    """Select the optimal model for your system."""
+    try:
+        from src.utils.model_selector import ModelSelector
+
+        selector = ModelSelector()
+
+        if report:
+            import json
+
+            report_data = selector.get_system_report()
+            console = Console()
+            console.print("[bold green]System Report[/bold green]")
+            console.print(json.dumps(report_data, indent=2))
+        else:
+            prioritize_confidence = confidence or not speed
+            best_model = selector.get_best_model(prioritize_confidence)
+
+            console = Console()
+
+            if best_model:
+                console.print(
+                    f"[bold green]Recommended model:[/bold green] {best_model.name}"
+                )
+                console.print(
+                    f"[bold blue]Expected confidence:[/bold blue] {best_model.expected_confidence:.2f}"
+                )
+                console.print(
+                    f"[bold yellow]Speed rating:[/bold yellow] {best_model.speed_rating}/10"
+                )
+                console.print(
+                    f"[bold magenta]RAM requirement:[/bold magenta] {best_model.recommended_ram_gb:.1f} GB"
+                )
+
+                # Show how to configure it
+                console.print(
+                    "\n[bold]To use this model, set in your .env file:[/bold]"
+                )
+                console.print(f"DEFAULT_LLM_PROVIDER=ollama")
+                console.print(f"# The model will be automatically selected")
+            else:
+                console.print("[bold red]No compatible models found![/bold red]")
+                console.print(
+                    f"Available system RAM: {selector.system_info['available_ram_gb']:.1f} GB"
+                )
+                console.print("\n[bold yellow]Recommendations:[/bold yellow]")
+                console.print("1. Close other applications to free up RAM")
+                console.print("2. Consider using a smaller model like gemma3:1b")
+                console.print("3. Or use cloud-based models (OpenAI/Anthropic)")
+
+    except ImportError as e:
+        console = Console()
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        console.print("Make sure you have installed all dependencies: poetry install")
+    except Exception as e:
+        console = Console()
+        console.print(f"[bold red]Error:[/bold red] {e}")
+
+
 if __name__ == "__main__":
     cli()

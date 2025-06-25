@@ -70,6 +70,7 @@ class AIAnalysisPipeline(LoggingMixin):
         """
         try:
             llm_config = settings.get_llm_config()
+            self.logger.info("LLM config", llm_config=llm_config)
 
             # Check if we should use a mock LLM for testing
             if llm_config.get("mock", False) or (
@@ -95,8 +96,8 @@ class AIAnalysisPipeline(LoggingMixin):
                 return ChatOllama(
                     model=llm_config["model"],
                     api_key=llm_config["api_key"],
-                    temperature=0.1,  # Low temperature for more consistent outputs
-                    max_tokens=2000,
+                    temperature=0.05,  # Lower temperature for more consistent outputs
+                    max_tokens=4000,  # Increased for more detailed analysis
                     base_url=settings.ollama_base_url,
                     # Note: ChatOllama doesn't have a direct timeout parameter
                     # The timeout is handled by the underlying HTTP client
@@ -163,9 +164,12 @@ class AIAnalysisPipeline(LoggingMixin):
             # Generate summary with key provisions and risk assessments
             summary = await self._generate_summary(document, entities)
 
-            # Determine overall confidence level
+            # Calculate comprehensive confidence level
+            comprehensive_confidence = self._calculate_comprehensive_confidence(
+                summary, entities
+            )
             confidence_level = self._calculate_confidence_level(
-                summary.confidence_score
+                comprehensive_confidence
             )
 
             # Check if human review is needed
@@ -183,9 +187,7 @@ class AIAnalysisPipeline(LoggingMixin):
                 confidence_level=confidence_level,
                 processing_time_ms=processing_time,
                 model_used=(
-                    self.llm.model_name
-                    if hasattr(self.llm, "model_name")
-                    else "unknown"
+                    self.llm.model if hasattr(self.llm, "model") else "unknown"
                 ),
                 warnings=warnings,
                 requires_human_review=requires_review,
@@ -268,25 +270,46 @@ class AIAnalysisPipeline(LoggingMixin):
         entity_prompt = PromptTemplate(
             input_variables=["text"],
             template="""
-            Analyze the following legal/policy document and extract key entities.
-            For each entity, provide:
-            1. Entity type (law, agency, affected_group, legal_concept, jurisdiction, etc.)
-            2. Entity value (the actual name/reference)
-            3. Confidence score (0.0-1.0)
-            4. Source text (the exact text where found)
-            5. Position information (approximate character positions)
+            You are an expert legal analyst with deep knowledge of legal documents, regulations, and policy analysis.
+            
+            Analyze the following legal/policy document and extract key entities with high precision.
+            
+            INSTRUCTIONS:
+            1. Read the text carefully and identify all significant legal entities
+            2. For each entity, provide a confidence score based on:
+               - Clarity of the entity in the text (0.9-1.0 for explicit mentions)
+               - Ambiguity level (0.7-0.9 for clear but contextual mentions)
+               - Inference required (0.5-0.7 for implied entities)
+            3. Be conservative with confidence scores - only assign high confidence when certain
+            4. Focus on legal relevance and significance
+            
+            Entity types to look for:
+            - legal_document: Laws, regulations, statutes, bills
+            - agency: Government agencies, departments, organizations
+            - affected_group: Populations, demographics, stakeholders
+            - legal_concept: Rights, obligations, procedures, standards
+            - jurisdiction: Geographic or legal jurisdictions
+            - timeline: Dates, deadlines, effective dates
+            - penalty: Fines, sanctions, enforcement mechanisms
             
             Document text:
             {text}
             
-            Return the results in the following format for each entity:
-            Type: [entity_type]
-            Value: [entity_value]
-            Confidence: [confidence_score]
-            Source: [source_text]
-            Start: [start_position]
-            End: [end_position]
-            ---
+            Return the results in the following JSON format:
+            ```json
+            [
+              {{
+                "Type": "entity_type",
+                "Value": "entity_value",
+                "Confidence": confidence_score,
+                "Source": "exact_source_text",
+                "Start": start_position,
+                "End": end_position
+              }}
+            ]
+            ```
+            
+            IMPORTANT: Only include entities you are confident about. Quality over quantity.
             """,
         )
 
@@ -399,27 +422,70 @@ class AIAnalysisPipeline(LoggingMixin):
         final_prompt_template = PromptTemplate(
             input_variables=["combined_summaries", "entities"],
             template="""
-            You are an expert legal analyst. The following are summaries of sections from a single legal or policy document.
-            Please synthesize these summaries into a single, cohesive, and comprehensive final analysis.
-
+            You are an expert legal analyst with decades of experience in policy analysis, constitutional law, and regulatory compliance.
+            
+            Your task is to provide a comprehensive, accurate, and well-reasoned analysis of a legal or policy document.
+            
             Section Summaries:
             {combined_summaries}
 
             Extracted Entities:
             {entities}
 
-            Please provide:
-            1. Executive Summary (2-3 paragraphs, capturing the essence of the document)
-            2. Key Points (bullet list of the most critical takeaways)
-            3. Main Provisions (detailed explanation of the document's main articles or sections and their impact)
-            4. Risk Assessments (potential risks related to civil rights, privacy, constitutional issues, etc.)
-            5. Affected Groups (populations or sectors most impacted by this document)
-            6. Legal Precedents/References (any mentioned legal cases, statutes, or regulations)
-            7. Implementation Timeline (if specified in the document)
-            8. Overall Confidence Score (a float from 0.0 to 1.0, assessing the quality and completeness of your own summary based *only* on the provided text)
-
-            Format your response clearly with markdown headers for each section.
-            Ensure the final output is well-structured and easy to read.
+            ANALYSIS REQUIREMENTS:
+            
+            1. **Executive Summary** (2-3 paragraphs)
+               - Capture the document's essence and primary purpose
+               - Highlight the most significant legal implications
+               - Be precise and avoid speculation
+            
+            2. **Key Points** (bullet list)
+               - Focus on actionable insights and critical takeaways
+               - Prioritize legal significance and practical impact
+               - Include compliance requirements and deadlines
+            
+            3. **Main Provisions** (detailed analysis)
+               - Analyze each major section for legal authority and scope
+               - Assess implementation requirements and enforcement mechanisms
+               - Evaluate potential challenges and constitutional considerations
+            
+            4. **Risk Assessments** (comprehensive evaluation)
+               - Civil rights implications and potential violations
+               - Privacy concerns and data protection issues
+               - Constitutional challenges and legal precedents
+               - Economic impact and stakeholder effects
+            
+            5. **Affected Groups** (stakeholder analysis)
+               - Directly impacted populations and organizations
+               - Secondary effects on related sectors
+               - Compliance burden assessment
+            
+            6. **Legal Precedents/References**
+               - Cited legal authorities and their relevance
+               - Related case law and regulatory frameworks
+               - Potential conflicts with existing law
+            
+            7. **Implementation Timeline**
+               - Effective dates and phase-in periods
+               - Agency rulemaking requirements
+               - Compliance deadlines and milestones
+            
+            8. **Confidence Assessment**
+               - Evaluate the quality and completeness of your analysis
+               - Consider: clarity of source material, comprehensiveness of coverage, certainty of legal interpretations
+               - Provide a confidence score (0.0-1.0) with justification
+               - Be conservative - only assign high confidence when analysis is thorough and source material is clear
+            
+            FORMAT: Use clear markdown headers and structured formatting.
+            
+            CONFIDENCE SCORING GUIDELINES:
+            - 0.9-1.0: Clear, comprehensive analysis with unambiguous source material
+            - 0.7-0.8: Good analysis with minor uncertainties or gaps
+            - 0.5-0.6: Adequate analysis with significant limitations
+            - 0.3-0.4: Limited analysis due to unclear or incomplete source material
+            - 0.1-0.2: Minimal analysis possible due to poor source quality
+            
+            Provide a thorough, professional analysis that would be suitable for legal counsel and policy makers.
             """,
         )
 
@@ -433,7 +499,7 @@ class AIAnalysisPipeline(LoggingMixin):
         return self._parse_summary_response(response.content)
 
     def _split_text(
-        self, text: str, chunk_size: int = 3000, chunk_overlap: int = 200
+        self, text: str, chunk_size: int = 4000, chunk_overlap: int = 500
     ) -> List[str]:
         """Split text into manageable chunks for processing.
 
@@ -450,10 +516,38 @@ class AIAnalysisPipeline(LoggingMixin):
 
         chunks = []
         start = 0
+
         while start < len(text):
             end = start + chunk_size
-            chunks.append(text[start:end])
-            start += chunk_size - chunk_overlap
+
+            # Try to break at sentence boundaries to preserve context
+            if end < len(text):
+                # Look for sentence endings within the last 200 characters
+                search_start = max(start + chunk_size - 200, start)
+                search_end = min(end + 200, len(text))
+
+                # Find the last sentence boundary
+                last_period = text.rfind(".", search_start, search_end)
+                last_exclamation = text.rfind("!", search_start, search_end)
+                last_question = text.rfind("?", search_start, search_end)
+
+                # Use the latest sentence boundary
+                sentence_end = max(last_period, last_exclamation, last_question)
+
+                if (
+                    sentence_end > start + chunk_size * 0.8
+                ):  # Only use if it's not too early
+                    end = sentence_end + 1
+
+            chunk = text[start:end].strip()
+            if chunk:  # Only add non-empty chunks
+                chunks.append(chunk)
+
+            # Move start position with overlap
+            start = end - chunk_overlap
+            if start >= len(text):
+                break
+
         return chunks
 
     def _parse_entity_response(
@@ -643,12 +737,63 @@ class AIAnalysisPipeline(LoggingMixin):
         Returns:
             ConfidenceLevel: Categorical confidence level.
         """
-        if confidence_score >= 0.8:
+        if confidence_score >= 0.85:
             return ConfidenceLevel.HIGH
-        elif confidence_score >= 0.6:
+        elif confidence_score >= 0.65:
             return ConfidenceLevel.MEDIUM
         else:
             return ConfidenceLevel.LOW
+
+    def _calculate_comprehensive_confidence(
+        self, summary: DocumentSummary, entities: List[ExtractedEntity]
+    ) -> float:
+        """Calculate a comprehensive confidence score based on multiple factors.
+
+        Args:
+            summary: Generated summary.
+            entities: Extracted entities.
+
+        Returns:
+            float: Comprehensive confidence score (0.0-1.0).
+        """
+        # Base confidence from summary
+        base_confidence = summary.confidence_score
+
+        # Entity confidence factor
+        if entities:
+            avg_entity_confidence = sum(e.confidence for e in entities) / len(entities)
+            high_confidence_entities = sum(1 for e in entities if e.confidence >= 0.8)
+            entity_quality_ratio = high_confidence_entities / len(entities)
+        else:
+            avg_entity_confidence = 0.0
+            entity_quality_ratio = 0.0
+
+        # Content quality factors
+        summary_length = len(summary.executive_summary)
+        has_key_points = len(summary.key_points) > 0
+        has_provisions = len(summary.main_provisions) > 0
+        has_risks = len(summary.risk_assessments) > 0
+
+        # Calculate content completeness score
+        content_factors = [
+            1.0 if summary_length > 200 else 0.5,  # Good summary length
+            1.0 if has_key_points else 0.3,  # Has key points
+            1.0 if has_provisions else 0.3,  # Has provisions
+            1.0 if has_risks else 0.3,  # Has risk assessments
+        ]
+        content_completeness = sum(content_factors) / len(content_factors)
+
+        # Weighted confidence calculation
+        weights = {"base": 0.4, "entities": 0.3, "entity_quality": 0.2, "content": 0.1}
+
+        comprehensive_confidence = (
+            base_confidence * weights["base"]
+            + avg_entity_confidence * weights["entities"]
+            + entity_quality_ratio * weights["entity_quality"]
+            + content_completeness * weights["content"]
+        )
+
+        return min(1.0, max(0.0, comprehensive_confidence))
 
     def _requires_human_review(
         self, summary: DocumentSummary, entities: List[ExtractedEntity]

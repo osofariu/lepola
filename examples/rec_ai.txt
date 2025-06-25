@@ -1,0 +1,136 @@
+PART 2—ARTIFICIAL INTELLIGENCE AND
+INFORMATION TECHNOLOGY MODERNIZATION
+SEC. 43201. ARTIFICIAL INTELLIGENCE AND INFORMATION
+TECHNOLOGY MODERNIZATION INITIATIVE.
+(a) APPROPRIATION OF FUNDS.—There is hereby ap-
+propriated to the Department of Commerce for fiscal year
+2025, out of any funds in the Treasury not otherwise ap-
+propriated, $500,000,000, to remain available until Sep-
+tember 30, 2034, to modernize and secure Federal infor-
+mation technology systems through the deployment of
+commercial artificial intelligence, the deployment of auto-
+mation technologies, and the replacement of antiquated
+business systems in accordance with subsection (b).
+(b) AUTHORIZED USES.—The Secretary of Com-
+merce shall use the funds appropriated under subsection
+(a) for the following:
+(1) To replace or modernize, within the Depart-
+ment of Commerce, legacy business systems with
+state-of-the-art commercial artificial intelligence sys-
+tems and automated decision systems.
+(2) To facilitate, within the Department of
+Commerce, the adoption of artificial intelligence
+models that increase operational efficiency and serv-
+ice delivery.
+(3) To improve, within the Department of Com-
+merce, the cybersecurity posture of Federal informa-
+tion technology systems through modernized archi-
+tecture, automated threat detection, and integrated
+artificial intelligence solutions.
+(c) MORATORIUM.—
+(1) IN GENERAL.—Except as provided in para-
+graph (2), no State or political subdivision thereof
+may enforce, during the 10-year period beginning ontember 30, 2034, to modernize and secure Federal infor-
+mation technology systems through the deployment of
+commercial artificial intelligence, the deployment of auto-
+mation technologies, and the replacement of antiquated
+business systems in accordance with subsection (b).
+(b) AUTHORIZED USES.—The Secretary of Com-
+merce shall use the funds appropriated under subsection
+(a) for the following:
+(1) To replace or modernize, within the Depart-
+ment of Commerce, legacy business systems with
+state-of-the-art commercial artificial intelligence sys-
+tems and automated decision systems.
+(2) To facilitate, within the Department of
+Commerce, the adoption of artificial intelligence
+models that increase operational efficiency and serv-
+ice delivery.
+(3) To improve, within the Department of Com-
+merce, the cybersecurity posture of Federal informa-
+tion technology systems through modernized archi-
+tecture, automated threat detection, and integrated
+artificial intelligence solutions.
+(c) MORATORIUM.—
+(1) IN GENERAL.—Except as provided in para-
+graph (2), no State or political subdivision thereof
+may enforce, during the 10-year period beginning on
+the date of the enactment of this Act, any law or
+regulation of that State or a political subdivision
+thereof limiting, restricting, or otherwise regulating
+artificial intelligence models, artificial intelligence
+systems, or automated decision systems entered into
+interstate commerce.
+(2) RULE OF CONSTRUCTION.—Paragraph (1)
+may not be construed to prohibit the enforcement
+of—
+(A) any law or regulation that—
+(i) the primary purpose and effect of
+which is to—
+(I) remove legal impediments to,
+or facilitate the deployment or oper-
+ation of, an artificial intelligence
+model, artificial intelligence system, or
+automated decision system; or
+(II) streamline licensing, permit-
+ting, routing, zoning, procurement, or
+reporting procedures in a manner that
+facilitates the adoption of artificial in-
+telligence models, artificial intelligence
+systems, or automated decision sys- tems;
+(ii) does not impose any substantive
+design, performance, data-handling, docu-
+mentation, civil liability, taxation, fee, or
+other requirement on artificial intelligence
+models, artificial intelligence systems, or
+automated decision systems unless such re-
+quirement—
+(I) is imposed under Federal law;
+or
+(II) in the case of a requirement
+imposed under a generally applicable
+law, is imposed in the same manner
+on models and systems, other than ar-
+tificial intelligence models, artificial
+intelligence systems, and automated
+decision systems, that provide com-
+parable functions to artificial intel-
+ligence models, artificial intelligence
+systems, or automated decision sys-
+tems; and
+(iii) does not impose a fee or bond un-
+less—
+(I) such fee or bond is reasonable
+and cost-based; and
+(II) under such fee or bond, arti-
+ficial intelligence models, artificial in-
+telligence systems, and automated de-
+cision systems are treated in the same
+manner as other models and systems
+that perform comparable functions; or
+(B) any provision of a law or regulation to
+the extent that the violation of such provision
+carries a criminal penalty.
+(d) DEFINITIONS.—In this section:
+(1) ARTIFICIAL INTELLIGENCE.—The term ‘‘ar-
+tificial intelligence’’ has the meaning given such
+term in section 5002 of the National Artificial Intel-
+ligence Initiative Act of 2020 (15 U.S.C. 9401).
+(2) ARTIFICIAL INTELLIGENCE MODEL.—The
+term ‘‘artificial intelligence model’’ means a software
+component of an information system that imple-
+ments artificial intelligence technology and uses
+computational, statistical, or machine-learning tech-
+niques to produce outputs from a defined set of in-
+puts.
+(3) ARTIFICIAL INTELLIGENCE SYSTEM.—The
+term ‘‘artificial intelligence system’’ means any data
+system, hardware, tool, or utility that operates, in
+whole or in part, using artificial intelligence.
+(4) AUTOMATED DECISION SYSTEM.—The term
+‘‘automated decision system’’ means any computa-
+tional process derived from machine learning, statis-
+tical modeling, data analytics, or artificial intel-
+ligence that issues a simplified output, including a
+score, classification, or recommendation, to materi-
+ally influence or replace human decision making.
