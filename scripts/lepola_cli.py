@@ -211,17 +211,24 @@ class LepolaCLI:
 
         return await self._make_request("POST", "/api/v1/query/ask", json=data)
 
-    async def analyze_document(self, document_id: str) -> Dict[str, Any]:
+    async def analyze_document(
+        self, document_id: str, force_regenerate_entities: bool = False
+    ) -> Dict[str, Any]:
         """Start AI analysis of a document.
 
         Args:
             document_id: Document ID to analyze
+            force_regenerate_entities: If True, regenerate entities even if they exist
 
         Returns:
             Analysis start response
         """
+        params = {}
+        if force_regenerate_entities:
+            params["force_regenerate_entities"] = "true"
+
         return await self._make_request(
-            "POST", f"/api/v1/pipeline/analyze/{document_id}"
+            "POST", f"/api/v1/pipeline/analyze/{document_id}", params=params
         )
 
     async def get_analysis_results(self, analysis_id: str) -> Dict[str, Any]:
@@ -586,8 +593,13 @@ def pipeline():
 
 @pipeline.command("analyze")
 @click.argument("document_id")
+@click.option(
+    "--force-regenerate-entities",
+    is_flag=True,
+    help="Regenerate entities even if they exist",
+)
 @click.pass_context
-def analyze_document(ctx, document_id):
+def analyze_document(ctx, document_id, force_regenerate_entities):
     """Start AI analysis of a document."""
 
     async def run():
@@ -598,7 +610,9 @@ def analyze_document(ctx, document_id):
                 console=Console(),
             ) as progress:
                 task = progress.add_task("Starting analysis...", total=None)
-                result = await client.analyze_document(document_id)
+                result = await client.analyze_document(
+                    document_id, force_regenerate_entities
+                )
                 progress.update(task, completed=True)
 
             console = Console()

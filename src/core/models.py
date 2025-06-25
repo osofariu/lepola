@@ -197,6 +197,10 @@ class AnalysisResult(BaseEntity):
     requires_human_review: bool = Field(
         default=False, description="Whether human review is recommended"
     )
+    entities_source_analysis_id: Optional[UUID] = Field(
+        default=None,
+        description="ID of the analysis that provided the entities (for caching)",
+    )
 
 
 class Query(BaseModel):

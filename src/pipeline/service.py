@@ -106,11 +106,14 @@ class AIAnalysisPipeline(LoggingMixin):
         except Exception as e:
             raise AIAnalysisError(f"Failed to initialize LLM: {str(e)}")
 
-    async def analyze_document(self, document: Document) -> AnalysisResult:
+    async def analyze_document(
+        self, document: Document, force_regenerate_entities: bool = False
+    ) -> AnalysisResult:
         """Perform comprehensive analysis of a legal document.
 
         Args:
             document: The document to analyze.
+            force_regenerate_entities: If True, regenerate entities even if they exist.
 
         Returns:
             AnalysisResult: Complete analysis results.
@@ -121,15 +124,37 @@ class AIAnalysisPipeline(LoggingMixin):
         start_time = time.time()
 
         try:
-            # Extract entities
-            entities = await self._extract_entities(document)
+            # Check for existing entities unless forced to regenerate
+            entities = []
+            entities_source_analysis_id = None
 
-            self.logger.info(
-                "Extracted entities",
-                document_id=str(document.id),
-                filename=document.filename,
-                entitiesCount=len(entities),
-            )
+            if not force_regenerate_entities:
+                # Try to find existing entities from a previous analysis
+                existing_analysis = (
+                    self.analysis_repository.get_latest_analysis_with_entities(
+                        document.id
+                    )
+                )
+                if existing_analysis and existing_analysis.entities:
+                    entities = existing_analysis.entities
+                    entities_source_analysis_id = existing_analysis.id
+                    self.logger.info(
+                        "Using cached entities from previous analysis",
+                        document_id=str(document.id),
+                        filename=document.filename,
+                        entitiesCount=len(entities),
+                        source_analysis_id=str(entities_source_analysis_id),
+                    )
+
+            # Extract entities if we don't have them from cache
+            if not entities:
+                entities = await self._extract_entities(document)
+                self.logger.info(
+                    "Extracted new entities",
+                    document_id=str(document.id),
+                    filename=document.filename,
+                    entitiesCount=len(entities),
+                )
 
             # Generate summary with key provisions and risk assessments
             summary = await self._generate_summary(document, entities)
@@ -160,6 +185,7 @@ class AIAnalysisPipeline(LoggingMixin):
                 ),
                 warnings=warnings,
                 requires_human_review=requires_review,
+                entities_source_analysis_id=entities_source_analysis_id,
             )
 
             log_ai_operation(

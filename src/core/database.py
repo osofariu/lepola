@@ -119,9 +119,11 @@ class Database(LoggingMixin):
                 model_used TEXT NOT NULL,
                 warnings TEXT,  -- JSON array as string
                 requires_human_review BOOLEAN NOT NULL,
+                entities_source_analysis_id TEXT,  -- ID of analysis that provided entities
                 created_at TEXT NOT NULL,
                 updated_at TEXT,
-                FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE
+                FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE,
+                FOREIGN KEY (entities_source_analysis_id) REFERENCES analysis_results (id) ON DELETE SET NULL
             )
         """
         )
@@ -309,9 +311,11 @@ class Database(LoggingMixin):
                 model_used TEXT NOT NULL,
                 warnings TEXT,  -- JSON array as string
                 requires_human_review BOOLEAN NOT NULL,
+                entities_source_analysis_id TEXT,  -- ID of analysis that provided entities
                 created_at TEXT NOT NULL,
                 updated_at TEXT,
-                FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE
+                FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE,
+                FOREIGN KEY (entities_source_analysis_id) REFERENCES analysis_results (id) ON DELETE SET NULL
             )
         """
         )

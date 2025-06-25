@@ -377,8 +377,8 @@ class AnalysisRepository(LoggingMixin):
                 INSERT INTO analysis_results (
                     id, document_id, confidence_level, processing_time_ms,
                     model_used, warnings, requires_human_review,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    entities_source_analysis_id, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(analysis_result.id),
@@ -388,6 +388,11 @@ class AnalysisRepository(LoggingMixin):
                     analysis_result.model_used,
                     json.dumps(analysis_result.warnings),
                     int(analysis_result.requires_human_review),
+                    (
+                        str(analysis_result.entities_source_analysis_id)
+                        if analysis_result.entities_source_analysis_id
+                        else None
+                    ),
                     analysis_result.created_at.isoformat(),
                     (
                         analysis_result.updated_at.isoformat()
@@ -507,7 +512,7 @@ class AnalysisRepository(LoggingMixin):
                 """
                 SELECT id, document_id, confidence_level, processing_time_ms,
                        model_used, warnings, requires_human_review,
-                       created_at, updated_at
+                       entities_source_analysis_id, created_at, updated_at
                 FROM analysis_results WHERE id = ?
                 """,
                 (str(analysis_id),),
@@ -617,8 +622,8 @@ class AnalysisRepository(LoggingMixin):
         )
 
         # Parse datetime strings
-        created_at = datetime.fromisoformat(result_row[7])
-        updated_at = datetime.fromisoformat(result_row[8]) if result_row[8] else None
+        created_at = datetime.fromisoformat(result_row[8])
+        updated_at = datetime.fromisoformat(result_row[9]) if result_row[9] else None
 
         analysis_result = AnalysisResult(
             id=UUID(result_row[0]),
@@ -630,11 +635,47 @@ class AnalysisRepository(LoggingMixin):
             model_used=result_row[4],
             warnings=json.loads(result_row[5]) if result_row[5] else [],
             requires_human_review=bool(result_row[6]),
+            entities_source_analysis_id=UUID(result_row[7]) if result_row[7] else None,
             created_at=created_at,
             updated_at=updated_at,
         )
 
         return analysis_result
+
+    def get_latest_analysis_with_entities(
+        self, document_id: UUID
+    ) -> Optional[AnalysisResult]:
+        """Get the latest analysis result that has entities for a document.
+
+        Args:
+            document_id: Document ID
+
+        Returns:
+            Latest analysis result with entities if found, None otherwise
+        """
+        with sqlite3.connect(self.db_path, timeout=settings.database_timeout) as db:
+            # Enable WAL mode for better concurrency
+            db.execute("PRAGMA journal_mode=WAL")
+
+            # Find the latest analysis that has entities
+            cursor = db.execute(
+                """
+                SELECT ar.id 
+                FROM analysis_results ar
+                JOIN extracted_entities ee ON ar.id = ee.analysis_id
+                WHERE ar.document_id = ?
+                ORDER BY ar.created_at DESC
+                LIMIT 1
+                """,
+                (str(document_id),),
+            )
+            result = cursor.fetchone()
+
+            if not result:
+                return None
+
+            # Get the full analysis result
+            return self.get_by_id(UUID(result[0]))
 
     def list_by_document_id(self, document_id: UUID) -> List[AnalysisResult]:
         """List all analysis results for a document.

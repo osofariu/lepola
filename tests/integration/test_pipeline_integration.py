@@ -16,7 +16,13 @@ warnings.filterwarnings(
 
 from fastapi.testclient import TestClient
 
-from src.core.models import DocumentType, ProcessingStatus, Document, DocumentMetadata
+from src.core.models import (
+    DocumentType,
+    ProcessingStatus,
+    Document,
+    DocumentMetadata,
+    AnalysisResult,
+)
 from src.main import app
 from src.pipeline.router import (
     get_ai_pipeline,
@@ -38,6 +44,12 @@ class MockAIAnalysisPipeline(AIAnalysisPipeline):
         self.llm = MockLLM()
         self.confidence_threshold = 0.7
         self.analysis_repository = analysis_repository
+
+    async def analyze_document(
+        self, document, force_regenerate_entities: bool = False
+    ) -> AnalysisResult:
+        """Override to support the new parameter."""
+        return await super().analyze_document(document, force_regenerate_entities)
 
 
 class TestPipelineIntegration:
@@ -419,3 +431,80 @@ class TestPipelineIntegration:
         assert "total_analyses" in data
         assert data["document_id"] == str(document_id)
         assert data["total_analyses"] >= 2
+
+    def test_entity_caching(self, test_db):
+        """Test that entities are cached and reused from previous analyses."""
+        repos = test_db
+
+        # Override dependencies to use test repositories
+        app.dependency_overrides[get_document_repository] = lambda: repos.document_repo
+        app.dependency_overrides[get_analysis_repository] = lambda: repos.analysis_repo
+        app.dependency_overrides[get_ai_pipeline] = lambda: MockAIAnalysisPipeline(
+            analysis_repository=repos.analysis_repo
+        )
+
+        # Create a document in test database
+        document = Document(
+            filename="caching_test.txt",
+            file_type=DocumentType.TEXT,
+            file_size=80,
+            content="Document for testing entity caching functionality.",
+            metadata=DocumentMetadata(title="Caching Test"),
+            processing_status=ProcessingStatus.COMPLETED,
+        )
+        document_id = repos.document_repo.create(document).id
+
+        # First analysis - should extract new entities
+        response1 = client.post(f"/api/v1/pipeline/analyze/{document_id}")
+        assert response1.status_code == 202
+        analysis_id1 = response1.json()["analysis_id"]
+
+        # Wait for first analysis to complete
+        import time
+
+        time.sleep(1)
+
+        # Get first analysis results
+        response1_result = client.get(f"/api/v1/pipeline/analysis/{analysis_id1}")
+        assert response1_result.status_code == 200
+        analysis1_data = response1_result.json()
+        assert analysis1_data["status"] == "completed"
+
+        # Second analysis - should reuse entities from first analysis
+        response2 = client.post(f"/api/v1/pipeline/analyze/{document_id}")
+        assert response2.status_code == 202
+        analysis_id2 = response2.json()["analysis_id"]
+
+        # Wait for second analysis to complete
+        time.sleep(1)
+
+        # Get second analysis results
+        response2_result = client.get(f"/api/v1/pipeline/analysis/{analysis_id2}")
+        assert response2_result.status_code == 200
+        analysis2_data = response2_result.json()
+        assert analysis2_data["status"] == "completed"
+
+        # Verify that second analysis references entities from first analysis
+        result2 = analysis2_data["result"]
+        assert "entities_source_analysis_id" in result2
+        assert result2["entities_source_analysis_id"] == str(analysis_id1)
+
+        # Third analysis with force_regenerate_entities=True - should extract new entities
+        response3 = client.post(
+            f"/api/v1/pipeline/analyze/{document_id}?force_regenerate_entities=true"
+        )
+        assert response3.status_code == 202
+        analysis_id3 = response3.json()["analysis_id"]
+
+        # Wait for third analysis to complete
+        time.sleep(1)
+
+        # Get third analysis results
+        response3_result = client.get(f"/api/v1/pipeline/analysis/{analysis_id3}")
+        assert response3_result.status_code == 200
+        analysis3_data = response3_result.json()
+        assert analysis3_data["status"] == "completed"
+
+        # Verify that third analysis has no entities_source_analysis_id (new entities)
+        result3 = analysis3_data["result"]
+        assert result3["entities_source_analysis_id"] is None

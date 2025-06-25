@@ -62,6 +62,7 @@ def get_ai_pipeline(
 )
 async def analyze_document(
     document_id: UUID,
+    force_regenerate_entities: bool = False,
     ai_pipeline: AIAnalysisPipeline = Depends(get_ai_pipeline),
     document_repo: DocumentRepository = Depends(get_document_repository),
 ):
@@ -69,6 +70,7 @@ async def analyze_document(
 
     Args:
         document_id: ID of the document to analyze.
+        force_regenerate_entities: If True, regenerate entities even if they exist.
         ai_pipeline: AI pipeline service (injected).
         document_repo: Document repository (injected).
 
@@ -151,7 +153,9 @@ async def analyze_document(
 
         try:
             # Perform the analysis
-            analysis_result = await ai_pipeline.analyze_document(document)
+            analysis_result = await ai_pipeline.analyze_document(
+                document, force_regenerate_entities
+            )
 
             # Use the actual analysis result ID
             analysis_id = analysis_result.id
