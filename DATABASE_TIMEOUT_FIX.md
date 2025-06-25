@@ -10,13 +10,15 @@ The application was experiencing database lock errors when running long analysis
 4. **Lock Timeout**: When analysis completed and tried to commit, the database connection had timed out
 
 ## Error Message
-```
+
+``` text
 sqlite3.OperationalError: database is locked
 ```
 
 ## Root Cause
 
 The issue was in the `AnalysisRepository.create()` method in `src/core/repository.py`. The method was:
+
 - Using the default SQLite timeout (5 seconds)
 - Holding the database connection open during the entire analysis process
 - Not handling database timeouts gracefully
@@ -26,6 +28,7 @@ The issue was in the `AnalysisRepository.create()` method in `src/core/repositor
 ### 1. Configurable Database Timeout
 
 **File**: `src/core/config.py`
+
 - Added `database_timeout` setting with default value of 30.0 seconds
 - Made timeout configurable via environment variable
 
@@ -38,6 +41,7 @@ database_timeout: float = Field(
 ### 2. Enhanced Database Connection Handling
 
 **File**: `src/core/repository.py`
+
 - Updated all database connections to use configurable timeout
 - Enabled WAL (Write-Ahead Logging) mode for better concurrency
 - Applied to `AnalysisRepository.create()`, `get_by_id()`, and `list_by_document_id()`
@@ -52,6 +56,7 @@ with sqlite3.connect(self.db_path, timeout=settings.database_timeout) as db:
 ### 3. Retry Logic for Database Operations
 
 **File**: `src/pipeline/service.py`
+
 - Moved database persistence outside the analysis loop
 - Added `_persist_analysis_result_with_retry()` method with exponential backoff
 - Implemented retry logic with configurable max attempts (default: 3)
@@ -90,13 +95,15 @@ export DATABASE_TIMEOUT=60.0  # Set to 60 seconds for very slow models
 ```
 
 Or in your `.env` file:
-```
+
+``` sh
 DATABASE_TIMEOUT=60.0
 ```
 
 ## Testing
 
 The changes have been tested with:
+
 - ✅ Database create operations
 - ✅ Database read operations  
 - ✅ Database list operations
@@ -115,4 +122,4 @@ The changes have been tested with:
 1. **Connection Pooling**: Consider implementing connection pooling for high-concurrency scenarios
 2. **Async Database**: Migrate to async database operations for better performance
 3. **Monitoring**: Add metrics for database operation timing and failure rates
-4. **Caching**: Implement result caching to reduce database load 
+4. **Caching**: Implement result caching to reduce database load

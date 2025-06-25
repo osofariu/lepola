@@ -181,6 +181,8 @@ def main() -> None:
         port=settings.port,
         reload=settings.debug,
         log_level=settings.log_level.lower(),
+        timeout_keep_alive=settings.http_timeout,
+        timeout_graceful_shutdown=30,
     )
 
 
@@ -195,6 +197,8 @@ def dev_main() -> None:
         log_level="debug",  # More verbose logging
         access_log=True,  # Show access logs
         use_colors=True,  # Colored output
+        timeout_keep_alive=settings.http_timeout,
+        timeout_graceful_shutdown=30,
     )
 
 

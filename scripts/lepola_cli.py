@@ -27,6 +27,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.panel import Panel
 from rich.text import Text
 
+from src.core.config import settings
+
 
 class LepolaCLI:
     """CLI client for the Lepola server."""
@@ -43,7 +45,13 @@ class LepolaCLI:
 
     async def __aenter__(self):
         """Async context manager entry."""
-        self.session = aiohttp.ClientSession()
+        # Configure timeouts for long-running operations with local LLMs
+        timeout = aiohttp.ClientTimeout(
+            total=settings.http_timeout,
+            connect=settings.http_connect_timeout,
+            sock_read=settings.http_read_timeout,
+        )
+        self.session = aiohttp.ClientSession(timeout=timeout)
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):

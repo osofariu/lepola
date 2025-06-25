@@ -403,9 +403,9 @@ python scripts/lepola_cli.py documents upload --help
 python scripts/lepola_cli.py query ask --help
 ```
 
-## 📖 Usage Examples
+## 📖 Usage Examples with REST
 
-### Document Upload
+### Document Upload requests
 
 ```bash
 # Upload a document
@@ -417,7 +417,7 @@ curl -X POST "http://localhost:8000/api/v1/ingestion/url" \
   -F "url=https://example.com/bill.pdf"
 ```
 
-### Document Analysis
+### Document Analysis requests
 
 ```bash
 # Start analysis
@@ -427,7 +427,7 @@ curl -X POST "http://localhost:8000/api/v1/pipeline/analyze/{document_id}"
 curl "http://localhost:8000/api/v1/pipeline/analysis/{analysis_id}"
 ```
 
-### Interactive Querying
+### Interactive Querying requests
 
 ```bash
 # Ask a question
@@ -439,7 +439,7 @@ curl -X POST "http://localhost:8000/api/v1/query/ask" \
   }'
 ```
 
-### Generate Reports
+### Generate Reports requests
 
 ```bash
 # Generate markdown report

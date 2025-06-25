@@ -117,6 +117,17 @@ class Settings(BaseSettings):
         default=30.0, description="Database connection timeout in seconds"
     )
 
+    # HTTP timeout settings for long-running operations
+    http_timeout: float = Field(
+        default=300.0, description="HTTP request timeout in seconds (5 minutes)"
+    )
+    http_connect_timeout: float = Field(
+        default=60.0, description="HTTP connection timeout in seconds"
+    )
+    http_read_timeout: float = Field(
+        default=300.0, description="HTTP read timeout in seconds (5 minutes)"
+    )
+
     # Rate limiting
     rate_limit_requests: int = Field(
         default=100, description="Requests per minute rate limit"

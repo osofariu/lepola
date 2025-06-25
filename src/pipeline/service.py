@@ -88,6 +88,7 @@ class AIAnalysisPipeline(LoggingMixin):
                     api_key=llm_config["api_key"],
                     temperature=0.1,  # Low temperature for more consistent outputs
                     max_tokens=2000,
+                    request_timeout=settings.http_timeout,
                 )
             elif llm_config["provider"] == "ollama":
                 debug_log("Initializing ChatOllama", model=llm_config["model"])
@@ -96,6 +97,9 @@ class AIAnalysisPipeline(LoggingMixin):
                     api_key=llm_config["api_key"],
                     temperature=0.1,  # Low temperature for more consistent outputs
                     max_tokens=2000,
+                    base_url=settings.ollama_base_url,
+                    # Note: ChatOllama doesn't have a direct timeout parameter
+                    # The timeout is handled by the underlying HTTP client
                 )
             else:
                 # Future: Add support for other providers
