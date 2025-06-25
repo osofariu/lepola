@@ -358,7 +358,9 @@ def display_analyses(analyses_data: Dict[str, Any]):
         return
 
     table = Table(title=f"Analyses ({total} total)")
-    table.add_column("ID", style="cyan", no_wrap=True, min_width=36)  # UUID is 36 chars
+    table.add_column(
+        "Analysis ID", style="cyan", no_wrap=True, min_width=36
+    )  # UUID is 36 chars
     table.add_column("Document", style="green")
     table.add_column("Status", style="yellow")
     table.add_column("Confidence", style="blue")
@@ -366,7 +368,9 @@ def display_analyses(analyses_data: Dict[str, Any]):
 
     for analysis in analyses:
         table.add_row(
-            str(analysis.get("id", "")),
+            str(
+                analysis.get("analysis_id", "")
+            ),  # Fixed: use analysis_id instead of id
             analysis.get("document_filename", ""),
             analysis.get("status", ""),
             str(analysis.get("confidence_level", "")),
@@ -652,7 +656,7 @@ def get_analysis_results(ctx, analysis_id):
             console = Console()
             console.print(
                 Panel(
-                    f"ID: {result.get('id')}\n"
+                    f"Analysis ID: {result.get('analysis_id')}\n"
                     f"Document: {result.get('document_filename')}\n"
                     f"Status: {result.get('status')}\n"
                     f"Confidence: {result.get('confidence_level')}\n"
