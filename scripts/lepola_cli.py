@@ -364,9 +364,21 @@ def display_analyses(analyses_data: Dict[str, Any]):
     table.add_column("Document", style="green")
     table.add_column("Status", style="yellow")
     table.add_column("Confidence", style="blue")
+    table.add_column("Entities", style="magenta", justify="center")
+    table.add_column("Warnings", style="red", justify="center")
     table.add_column("Created", style="white")
 
     for analysis in analyses:
+        # Get entity count and warning count from the analysis data
+        entity_count = analysis.get("entity_count", 0)
+        warning_count = analysis.get("warning_count", 0)
+
+        # Format entity count with emoji
+        entity_display = f"📊 {entity_count}" if entity_count > 0 else "0"
+
+        # Format warning count with emoji
+        warning_display = f"⚠️ {warning_count}" if warning_count > 0 else "✅ 0"
+
         table.add_row(
             str(
                 analysis.get("analysis_id", "")
@@ -374,6 +386,8 @@ def display_analyses(analyses_data: Dict[str, Any]):
             analysis.get("document_filename", ""),
             analysis.get("status", ""),
             str(analysis.get("confidence_level", "")),
+            entity_display,
+            warning_display,
             analysis.get("created_at", "")[:19] if analysis.get("created_at") else "",
         )
 
@@ -654,6 +668,8 @@ def get_analysis_results(ctx, analysis_id):
                 progress.update(task, completed=True)
 
             console = Console()
+
+            # Basic analysis info
             console.print(
                 Panel(
                     f"Analysis ID: {result.get('analysis_id')}\n"
@@ -666,6 +682,114 @@ def get_analysis_results(ctx, analysis_id):
                     border_style="green",
                 )
             )
+
+            # Display detailed results if available
+            if result.get("status") == "completed" and "result" in result:
+                analysis_data = result["result"]
+
+                # Entity count information
+                entities = analysis_data.get("entities", [])
+                entity_count = len(entities)
+                console.print(
+                    Panel(
+                        f"📊 Entities Found: {entity_count}\n"
+                        f"🔍 Entity Types: {', '.join(set(e.get('entity_type', 'unknown') for e in entities)) if entities else 'None'}",
+                        title="Entity Extraction",
+                        border_style="blue",
+                    )
+                )
+
+                # Summary information
+                summary = analysis_data.get("summary", {})
+                if summary:
+                    executive_summary = summary.get(
+                        "executive_summary", "No summary available"
+                    )
+                    key_points = summary.get("key_points", [])
+
+                    # Only show summary panel if we have meaningful content
+                    if (
+                        executive_summary
+                        and executive_summary != "No summary available"
+                    ):
+                        console.print(
+                            Panel(
+                                (
+                                    f"📝 Executive Summary:\n{executive_summary}\n\n"
+                                    f"🔑 Key Points ({len(key_points)}):\n"
+                                    + "\n".join(f"• {point}" for point in key_points)
+                                    if key_points
+                                    else "No key points available"
+                                ),
+                                title="Document Summary",
+                                border_style="yellow",
+                            )
+                        )
+                    else:
+                        console.print(
+                            Panel(
+                                (
+                                    f"📝 Executive Summary: No summary available\n\n"
+                                    f"🔑 Key Points ({len(key_points)}):\n"
+                                    + "\n".join(f"• {point}" for point in key_points)
+                                    if key_points
+                                    else "No key points available"
+                                ),
+                                title="Document Summary",
+                                border_style="yellow",
+                            )
+                        )
+                else:
+                    console.print(
+                        Panel(
+                            "📝 No summary data available",
+                            title="Document Summary",
+                            border_style="yellow",
+                        )
+                    )
+
+                # Warnings information
+                warnings = analysis_data.get("warnings", [])
+                if warnings:
+                    console.print(
+                        Panel(
+                            "⚠️ Warnings:\n"
+                            + "\n".join(f"• {warning}" for warning in warnings),
+                            title="Analysis Warnings",
+                            border_style="red",
+                        )
+                    )
+                else:
+                    console.print(
+                        Panel(
+                            "✅ No warnings generated",
+                            title="Analysis Warnings",
+                            border_style="green",
+                        )
+                    )
+
+                # Additional analysis details
+                requires_review = analysis_data.get("requires_human_review", False)
+                model_used = analysis_data.get("model_used", "Unknown")
+
+                console.print(
+                    Panel(
+                        f"🤖 Model Used: {model_used}\n"
+                        f"👁️ Requires Human Review: {'Yes' if requires_review else 'No'}",
+                        title="Analysis Details",
+                        border_style="cyan",
+                    )
+                )
+
+            elif result.get("status") == "failed":
+                error_msg = result.get("error", "Unknown error occurred")
+                console.print(
+                    Panel(
+                        f"❌ Analysis failed: {error_msg}",
+                        title="Analysis Error",
+                        border_style="red",
+                    )
+                )
 
     asyncio.run(run())
 
