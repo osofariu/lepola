@@ -269,48 +269,40 @@ class AIAnalysisPipeline(LoggingMixin):
         """
         entity_prompt = PromptTemplate(
             input_variables=["text"],
-            template="""
-            You are an expert legal analyst with deep knowledge of legal documents, regulations, and policy analysis.
-            
-            Analyze the following legal/policy document and extract key entities with high precision.
-            
-            INSTRUCTIONS:
-            1. Read the text carefully and identify all significant legal entities
-            2. For each entity, provide a confidence score based on:
-               - Clarity of the entity in the text (0.9-1.0 for explicit mentions)
-               - Ambiguity level (0.7-0.9 for clear but contextual mentions)
-               - Inference required (0.5-0.7 for implied entities)
-            3. Be conservative with confidence scores - only assign high confidence when certain
-            4. Focus on legal relevance and significance
-            
-            Entity types to look for:
-            - legal_document: Laws, regulations, statutes, bills
-            - agency: Government agencies, departments, organizations
-            - affected_group: Populations, demographics, stakeholders
-            - legal_concept: Rights, obligations, procedures, standards
-            - jurisdiction: Geographic or legal jurisdictions
-            - timeline: Dates, deadlines, effective dates
-            - penalty: Fines, sanctions, enforcement mechanisms
-            
-            Document text:
-            {text}
-            
-            Return the results in the following JSON format:
-            ```json
-            [
-              {{
-                "Type": "entity_type",
-                "Value": "entity_value",
-                "Confidence": confidence_score,
-                "Source": "exact_source_text",
-                "Start": start_position,
-                "End": end_position
-              }}
-            ]
-            ```
-            
-            IMPORTANT: Only include entities you are confident about. Quality over quantity.
-            """,
+            template="""You are an expert legal analyst. Extract entities from this legal document.
+
+CRITICAL: You must respond with ONLY valid JSON. No explanations, no comments, no markdown formatting.
+
+Entity types to extract:
+- legal_document: Laws, regulations, statutes, bills
+- agency: Government agencies, departments, organizations  
+- affected_group: Populations, demographics, stakeholders
+- legal_concept: Rights, obligations, procedures, standards
+- jurisdiction: Geographic or legal jurisdictions
+- timeline: Dates, deadlines, effective dates
+- penalty: Fines, sanctions, enforcement mechanisms
+
+Document text:
+{text}
+
+RESPOND WITH ONLY THIS JSON FORMAT (no other text):
+[
+  {{
+    "Type": "entity_type",
+    "Value": "entity_value", 
+    "Confidence": 0.95,
+    "Source": "exact_source_text",
+    "Start": 0,
+    "End": 0
+  }}
+]
+
+Rules:
+- Confidence: 0.9-1.0 for explicit mentions, 0.7-0.9 for clear contextual, 0.5-0.7 for implied
+- Start/End: Character positions in the document text
+- Source: Exact text where entity was found
+- Only include entities you are confident about
+- NO EXPLANATORY TEXT - ONLY JSON""",
         )
 
         try:
@@ -321,6 +313,14 @@ class AIAnalysisPipeline(LoggingMixin):
             for chunk_idx, chunk in enumerate(text_chunks):
                 prompt = entity_prompt.format(text=chunk)
                 response = await self.llm.ainvoke(prompt)
+                self.logger.debug(
+                    "** Entity response:",
+                    response=(
+                        (response.content[:100] + "...")
+                        if len(response.content) > 100
+                        else response.content
+                    ),
+                )
 
                 # Parse the response and create ExtractedEntity objects
                 entities = self._parse_entity_response(
@@ -563,26 +563,87 @@ class AIAnalysisPipeline(LoggingMixin):
             List of parsed entities.
         """
 
-        debug_log(
+        self.logger.debug(
             "** Parsing entity response:",
             response=(response[:100] + "...") if len(response) > 100 else response,
         )
 
-        # probably need to improve prompt to get the format consistent between models
-        # but for now let's try to account for variations we have seen
-        if re.search(r"```json", response):
-            json_response = response.split("```json")[1].split("```")[0]
-            response_entities = json.loads(json_response)
+        # Clean the response - remove any explanatory text
+        cleaned_response = self._clean_json_response(response)
 
-            entities = [self._map_to_entity(entity) for entity in response_entities]
-            return entities
+        try:
+            # Try to parse as JSON first
+            response_entities = json.loads(cleaned_response)
+            if isinstance(response_entities, list):
+                entities = [self._map_to_entity(entity) for entity in response_entities]
+                return entities
+            else:
+                self.logger.warning(
+                    "Response is not a list of entities", response=cleaned_response
+                )
+                return []
 
-        # sometimes it's wrapped in a markdown code string for no apparent reason
-        if re.search(r"```$", response):
-            response = response.split("```")[1]
+        except json.JSONDecodeError as e:
+            self.logger.warning(
+                "Failed to parse JSON response", error=str(e), response=cleaned_response
+            )
+            # Fall back to the old parsing method for backward compatibility
+            return self._parse_legacy_response(response, offset)
+        except Exception as e:
+            self.logger.error(
+                "Failed to parse entity response",
+                error=str(e),
+                response=cleaned_response,
+            )
+            return []
 
+    def _clean_json_response(self, response: str) -> str:
+        """Clean the response to extract only JSON content.
+
+        Args:
+            response: Raw LLM response that may contain explanatory text.
+
+        Returns:
+            str: Cleaned JSON string.
+        """
+        # Remove any text before the first [
+        if "[" in response:
+            start_idx = response.find("[")
+            response = response[start_idx:]
+
+        # Remove any text after the last ]
+        if "]" in response:
+            end_idx = response.rfind("]") + 1
+            response = response[:end_idx]
+
+        # Remove markdown code blocks if present
+        if "```json" in response:
+            parts = response.split("```json")
+            if len(parts) > 1:
+                json_part = parts[1]
+                if "```" in json_part:
+                    json_part = json_part.split("```")[0]
+                response = json_part.strip()
+        elif "```" in response:
+            parts = response.split("```")
+            if len(parts) > 1:
+                response = parts[1].strip()
+
+        return response.strip()
+
+    def _parse_legacy_response(
+        self, response: str, offset: int = 0
+    ) -> List[ExtractedEntity]:
+        """Parse legacy response format as fallback.
+
+        Args:
+            response: Raw LLM response.
+            offset: Character offset for position calculation.
+
+        Returns:
+            List of parsed entities.
+        """
         entities = []
-
         sections = response.split("---")
 
         for section in sections:

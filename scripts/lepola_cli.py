@@ -707,38 +707,23 @@ def get_analysis_results(ctx, analysis_id):
                     )
                     key_points = summary.get("key_points", [])
 
-                    # Only show summary panel if we have meaningful content
-                    if (
-                        executive_summary
-                        and executive_summary != "No summary available"
-                    ):
-                        console.print(
-                            Panel(
-                                (
-                                    f"📝 Executive Summary:\n{executive_summary}\n\n"
-                                    f"🔑 Key Points ({len(key_points)}):\n"
-                                    + "\n".join(f"• {point}" for point in key_points)
-                                    if key_points
-                                    else "No key points available"
-                                ),
-                                title="Document Summary",
-                                border_style="yellow",
-                            )
+                    # Always show executive summary, then key points if present
+                    panel_content = f"📝 Executive Summary:\n{executive_summary}\n\n"
+                    if key_points:
+                        panel_content += (
+                            f"🔑 Key Points ({len(key_points)}):\n"
+                            + "\n".join(f"• {point}" for point in key_points)
                         )
                     else:
-                        console.print(
-                            Panel(
-                                (
-                                    f"📝 Executive Summary: No summary available\n\n"
-                                    f"🔑 Key Points ({len(key_points)}):\n"
-                                    + "\n".join(f"• {point}" for point in key_points)
-                                    if key_points
-                                    else "No key points available"
-                                ),
-                                title="Document Summary",
-                                border_style="yellow",
-                            )
+                        panel_content += "🔑 No key points available"
+
+                    console.print(
+                        Panel(
+                            panel_content,
+                            title="Document Summary",
+                            border_style="yellow",
                         )
+                    )
                 else:
                     console.print(
                         Panel(

@@ -6,6 +6,7 @@ for environment variable management and validation.
 """
 
 import os
+from pathlib import Path
 from typing import List, Optional
 
 from pydantic import Field
@@ -136,6 +137,21 @@ class Settings(BaseSettings):
         default=60, description="Rate limit period in seconds"
     )
 
+    # JSON Parsing settings
+    json_strict_mode: bool = Field(
+        default=False,
+        description="Enable strict JSON parsing mode (fails fast on errors)",
+    )
+    json_enable_robust_parsing: bool = Field(
+        default=True, description="Enable robust JSON parsing for malformed data"
+    )
+    json_log_parsing_errors: bool = Field(
+        default=True, description="Log JSON parsing errors for monitoring"
+    )
+    json_max_recovery_attempts: int = Field(
+        default=3, description="Maximum attempts to recover from JSON parsing errors"
+    )
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
@@ -148,18 +164,58 @@ class Settings(BaseSettings):
         super().__init__(**kwargs)
         self._create_directories()
 
+    def _get_project_root(self) -> Path:
+        """Get the project root directory.
+
+        Returns:
+            Path: Path to the project root directory.
+        """
+        # Start from the current file's directory and walk up to find the project root
+        current_file = Path(__file__)
+        current_dir = current_file.parent
+
+        # Walk up the directory tree to find the project root
+        # Look for pyproject.toml or README.md as indicators of the project root
+        while current_dir.parent != current_dir:  # Stop at filesystem root
+            if (current_dir / "pyproject.toml").exists() or (
+                current_dir / "README.md"
+            ).exists():
+                return current_dir
+            current_dir = current_dir.parent
+
+        # Fallback: if we can't find the project root, use the current working directory
+        return Path.cwd()
+
     def _create_directories(self) -> None:
-        """Create necessary directories if they don't exist."""
+        """Create necessary directories if they don't exist.
+
+        All directories are created relative to the project root to ensure
+        consistent behavior regardless of the current working directory.
+        """
+        project_root = self._get_project_root()
+
+        # Convert relative paths to absolute paths relative to project root
         directories = [
-            self.vector_db_path,  # Create the actual vectordb directory
-            "./data",
-            "./outputs",
-            "./logs",
+            project_root / "data",
+            project_root / "logs",
         ]
 
+        # Handle vector_db_path specially - it might be relative or absolute
+        if os.path.isabs(self.vector_db_path):
+            # If it's already absolute, use it as is
+            vector_db_dir = Path(self.vector_db_path)
+        else:
+            # If it's relative, make it relative to project root
+            vector_db_dir = project_root / self.vector_db_path.lstrip("./")
+
+        directories.append(vector_db_dir)
+
         for directory in directories:
-            if directory and not os.path.exists(directory):
-                os.makedirs(directory, exist_ok=True)
+            if directory and not directory.exists():
+                directory.mkdir(parents=True, exist_ok=True)
+
+        # Update the vector_db_path to be absolute for consistency
+        self.vector_db_path = str(vector_db_dir)
 
     @property
     def is_development(self) -> bool:
@@ -308,6 +364,51 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"Unsupported embedding provider: {self.default_embedding_provider}"
             )
+
+    def get_json_parsing_config(self) -> dict:
+        """Get JSON parsing configuration based on environment.
+
+        Returns:
+            dict: JSON parsing configuration with appropriate settings for the environment.
+        """
+        # In production, default to strict mode unless explicitly disabled
+        # In development, default to lenient mode for better debugging
+        if self.is_production:
+            # Production defaults: strict mode for performance and data quality
+            strict_mode = (
+                self.json_strict_mode if hasattr(self, "json_strict_mode") else True
+            )
+            enable_robust = (
+                self.json_enable_robust_parsing
+                if hasattr(self, "json_enable_robust_parsing")
+                else False
+            )
+        else:
+            # Development defaults: lenient mode for debugging and recovery
+            strict_mode = (
+                self.json_strict_mode if hasattr(self, "json_strict_mode") else False
+            )
+            enable_robust = (
+                self.json_enable_robust_parsing
+                if hasattr(self, "json_enable_robust_parsing")
+                else True
+            )
+
+        return {
+            "strict": strict_mode,
+            "enable_robust_parsing": enable_robust,
+            "log_errors": (
+                self.json_log_parsing_errors
+                if hasattr(self, "json_log_parsing_errors")
+                else True
+            ),
+            "max_recovery_attempts": (
+                self.json_max_recovery_attempts
+                if hasattr(self, "json_max_recovery_attempts")
+                else 3
+            ),
+            "environment": "production" if self.is_production else "development",
+        }
 
 
 # Global settings instance
