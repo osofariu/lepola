@@ -184,6 +184,8 @@ async def analyze_document(
                 "completed_at": analysis_result.created_at.isoformat(),
                 "confidence_level": analysis_result.confidence_level.value,
                 "processing_time_ms": analysis_result.processing_time_ms,
+                "entity_count": len(analysis_result.entities),
+                "warning_count": len(analysis_result.warnings),
             }
 
             logger.info(
@@ -373,6 +375,8 @@ async def get_analysis_results(
             "completed_at": analysis_result.created_at.isoformat(),
             "confidence_level": analysis_result.confidence_level.value,
             "processing_time_ms": analysis_result.processing_time_ms,
+            "entity_count": len(analysis_result.entities),
+            "warning_count": len(analysis_result.warnings),
             "result": analysis_result.model_dump(),
         }
 
@@ -436,6 +440,8 @@ async def list_analyses(
                         "confidence_level": result.confidence_level.value,
                         "processing_time_ms": result.processing_time_ms,
                         "requires_human_review": result.requires_human_review,
+                        "entity_count": len(result.entities),
+                        "warning_count": len(result.warnings),
                     }
                 )
 

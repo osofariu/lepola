@@ -359,25 +359,29 @@ def display_analyses(analyses_data: Dict[str, Any]):
 
     table = Table(title=f"Analyses ({total} total)")
     table.add_column(
-        "Analysis ID", style="cyan", no_wrap=True, min_width=36
+        "Analysis ID", style="cyan", no_wrap=True, min_width=36, max_width=36
     )  # UUID is 36 chars
-    table.add_column("Document", style="green")
-    table.add_column("Status", style="yellow")
-    table.add_column("Confidence", style="blue")
-    table.add_column("Entities", style="magenta", justify="center")
-    table.add_column("Warnings", style="red", justify="center")
-    table.add_column("Created", style="white")
+    table.add_column("Document", style="green", min_width=12, max_width=100)
+    table.add_column("Status", style="yellow", min_width=8, max_width=10)
+    table.add_column("Confidence", style="blue", min_width=8, max_width=10)
+    table.add_column(
+        "Entities", style="magenta", justify="right", min_width=8, max_width=10
+    )
+    table.add_column(
+        "Warnings", style="red", justify="center", min_width=8, max_width=10
+    )
+    table.add_column("Created", style="white", min_width=19, max_width=19)
 
     for analysis in analyses:
         # Get entity count and warning count from the analysis data
         entity_count = analysis.get("entity_count", 0)
         warning_count = analysis.get("warning_count", 0)
 
-        # Format entity count with emoji
-        entity_display = f"📊 {entity_count}" if entity_count > 0 else "0"
+        # Format entity count without emoji
+        entity_display = str(entity_count)
 
-        # Format warning count with emoji
-        warning_display = f"⚠️ {warning_count}" if warning_count > 0 else "✅ 0"
+        # Format warning count without emoji
+        warning_display = str(warning_count)
 
         table.add_row(
             str(
